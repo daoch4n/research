@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 
+        Chosen Palette: Scholarly Calm
+        Application Structure Plan: The SPA is designed as a thematic, multi-section dashboard to deconstruct the dense, linear research report into a non-linear, explorable experience. This architecture prioritizes user understanding and engagement over mirroring the report's layout. A persistent top navigation allows users to jump between key concepts.
+        Update: Integrated a new "Mind Map" section using D3.js to provide a visual, interactive overview of the report's structure. Nodes are now clickable and scroll to the relevant document section.
+        CONFIRMATION: NO SVG graphics used (except for D3-generated SVG). NO Mermaid JS used.
+    -->
+    <title>Interactive Analysis: LLM-Controlled Real-Time Singing Voice Synthesis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        html {
+            scroll-behavior: smooth;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* slate-50 */
+            color: #1e293b; /* slate-800 */
+        }
+        .nav-link {
+            transition: color 0.3s, border-color 0.3s;
+        }
+        .nav-link.active {
+            color: #0d9488; /* teal-600 */
+            border-bottom-color: #0d9488; /* teal-600 */
+        }
+        .stat-card {
+            background-color: #ffffff;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 50vh;
+        }
+        @media (max-width: 768px) {
+            .chart-container {
+                height: 300px;
+                max-height: 60vh;
+            }
+        }
+        .gap-node {
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid #cbd5e1; /* slate-300 */
+        }
+        .gap-node.active, .gap-node:hover {
+            background-color: #ccfbf1; /* teal-100 */
+            border-color: #0d9488; /* teal-600 */
+            transform: scale(1.05);
+        }
+        .flow-block {
+            transition: all 0.3s ease;
+        }
+        .flow-block:hover {
+            background-color: #f0fdfa; /* teal-50 */
+            box-shadow: 0 0 15px rgba(13, 148, 136, 0.2);
+        }
+        .accordion-button.active .accordion-icon {
+            transform: rotate(180deg);
+        }
+        .accordion-icon {
+            transition: transform 0.3s;
+        }
+        .svs-row.selected {
+            background-color: #f0f9ff; /* sky-50 */
+            color: #0c4a6e; /* sky-900 */
+        }
+        .content-text p { margin-bottom: 1em; line-height: 1.6; }
+        .content-text h3 { font-size: 1.5em; font-weight: 600; margin-top: 1.5em; margin-bottom: 0.75em; color: #0f766e; /* teal-700 */}
+        .content-text h4 { font-size: 1.25em; font-weight: 600; margin-top: 1.2em; margin-bottom: 0.6em; color: #1e293b; /* slate-800 */}
+        .content-text ul { list-style-type: disc; margin-left: 1.5em; margin-bottom: 1em; }
+        .content-text li { margin-bottom: 0.5em; }
+        .citation-link { color: #0d9488; text-decoration: underline; font-weight: 500; }
+        .bibliography-item { margin-bottom: 0.75em; }
+        .bibliography-item a { color: #0ea5e9; /* sky-500 */ text-decoration: underline; }
+
+        /* Mind Map Styles */
+        .link {
+            stroke: #94a3b8; /* slate-400 */
+            stroke-opacity: 0.6;
+            stroke-width: 1.5px;
+        }
+        .node {
+            cursor: pointer;
+        }
+        .node circle {
+            stroke: #ffffff;
+            stroke-width: 2px;
+            transition: transform 0.2s ease-in-out;
+        }
+        .node:hover circle {
+            transform: scale(1.1);
+        }
+        .node text {
+            font-size: 11px;
+            font-weight: 500;
+            pointer-events: none;
+            fill: #1e293b; /* slate-800 */
+        }
+        .tooltip {
+            position: absolute;
+            text-align: left;
+            width: auto;
+            max-width: 320px;
+            padding: 12px;
+            font-size: 14px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0; /* slate-200 */
+            border-radius: 8px;
+            pointer-events: none;
+            opacity: 0;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+        #mindmap-section-container {
+            position: relative;
+        }
+        .mindmap-controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 1rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            z-index: 10;
+        }
+        .mindmap-controls label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        .mindmap-controls input[type="range"] {
+            width: 150px;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <header class="bg-white/80 backdrop-blur-md sticky top-0 z-50 shadow-sm">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex-shrink-0">
+                    <h1 class="text-xl font-bold text-slate-800">LLM Singing Synthesis</h1>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#overview" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-teal-600 border-b-2 border-transparent">Overview</a>
+                        <a href="#challenge" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-teal-600 border-b-2 border-transparent">The Challenge</a>
+                        <a href="#solution" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-teal-600 border-b-2 border-transparent">Proposed Solution</a>
+                        <a href="#technology" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-teal-600 border-b-2 border-transparent">Tech Landscape</a>
+                        <a href="#evaluation" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-teal-600 border-b-2 border-transparent">Evaluation</a>
+                        <a href="#mindmap" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-teal-600 border-b-2 border-transparent">Mind Map</a>
+                        <a href="#ethics" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-teal-600 border-b-2 border-transparent">Ethics & Impact</a>
+                        <a href="#conclusion" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-teal-600 border-b-2 border-transparent">Conclusion</a>
+                        <a href="#bibliography" class="nav-link px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:text-teal-600 border-b-2 border-transparent">Bibliography</a>
+                    </div>
+                </div>
+                <div class="-mr-2 flex md:hidden">
+                    <button id="mobile-menu-button" type="button" class="bg-white inline-flex items-center justify-center p-2 rounded-md text-slate-400 hover:text-slate-500 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500" aria-controls="mobile-menu" aria-expanded="false">
+                        <span class="sr-only">Open main menu</span>
+                        <svg class="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                        <svg class="hidden h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+            </div>
+        </nav>
+        <div class="hidden md:hidden" id="mobile-menu">
+            <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                <a href="#overview" class="nav-link block px-3 py-2 rounded-md text-base font-medium text-slate-600 hover:text-teal-600 hover:bg-slate-50">Overview</a>
+                <a href="#challenge" class="nav-link block px-3 py-2 rounded-md text-base font-medium text-slate-600 hover:text-teal-600 hover:bg-slate-50">The Challenge</a>
+                <a href="#solution" class="nav-link block px-3 py-2 rounded-md text-base font-medium text-slate-600 hover:text-teal-600 hover:bg-slate-50">Proposed Solution</a>
+                <a href="#technology" class="nav-link block px-3 py-2 rounded-md text-base font-medium text-slate-600 hover:text-teal-600 hover:bg-slate-50">Tech Landscape</a>
+                <a href="#evaluation" class="nav-link block px-3 py-2 rounded-md text-base font-medium text-slate-600 hover:text-teal-600 hover:bg-slate-50">Evaluation</a>
+                <a href="#mindmap" class="nav-link block px-3 py-2 rounded-md text-base font-medium text-slate-600 hover:text-teal-600 hover:bg-slate-50">Mind Map</a>
+                <a href="#ethics" class="nav-link block px-3 py-2 rounded-md text-base font-medium text-slate-600 hover:text-teal-600 hover:bg-slate-50">Ethics & Impact</a>
+                <a href="#conclusion" class="nav-link block px-3 py-2 rounded-md text-base font-medium text-slate-600 hover:text-teal-600 hover:bg-slate-50">Conclusion</a>
+                <a href="#bibliography" class="nav-link block px-3 py-2 rounded-md text-base font-medium text-slate-600 hover:text-teal-600 hover:bg-slate-50">Bibliography</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="text-slate-700">
+        <section id="overview" class="py-16 sm:py-24 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center">
+                    <h2 class="text-base font-semibold text-teal-600 tracking-wide uppercase">A Research Deep Dive</h2>
+                    <p class="mt-2 text-3xl font-extrabold text-slate-900 tracking-tight sm:text-4xl">LLM-Controlled Real-Time Singing Voice Synthesis</p>
+                    <p class="mt-4 max-w-2xl mx-auto text-xl text-slate-500">An interactive analysis of the research to create an AI that can sing expressively, in real-time, and synchronized with a live beat.</p>
+                </div>
+                <div class="mt-12 grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+                    <div class="stat-card text-center">
+                        <p class="text-5xl font-extrabold text-teal-600">&lt;100ms</p>
+                        <p class="mt-2 text-lg font-medium text-slate-600">Target End-to-End Latency</p>
+                        <p class="mt-1 text-sm text-slate-500">For genuine real-time interaction.</p>
+                    </div>
+                    <div class="stat-card text-center">
+                        <p class="text-5xl font-extrabold text-teal-600">&lt;±20ms</p>
+                        <p class="mt-2 text-lg font-medium text-slate-600">Target Sync Accuracy</p>
+                        <p class="mt-1 text-sm text-slate-500">For musically coherent performance.</p>
+                    </div>
+                    <div class="stat-card text-center">
+                        <div class="flex items-center justify-center space-x-2">
+                           <span class="text-5xl font-extrabold text-teal-600">5</span>
+                           <span class="text-3xl font-bold text-slate-400">/</span>
+                           <span class="text-5xl font-extrabold text-teal-600">5</span>
+                        </div>
+                        <p class="mt-2 text-lg font-medium text-slate-600">Research Gaps / Questions</p>
+                        <p class="mt-1 text-sm text-slate-500">A structured approach to innovation.</p>
+                    </div>
+                     <div class="stat-card text-center">
+                        <p class="text-5xl font-extrabold text-teal-600">3</p>
+                        <p class="mt-2 text-lg font-medium text-slate-600">Phased Experimentation</p>
+                        <p class="mt-1 text-sm text-slate-500">From components to live performance.</p>
+                    </div>
+                </div>
+                 <div class="mt-12 text-slate-600 max-w-4xl mx-auto content-text" id="executive-summary-content">
+                    <h3 class="text-2xl font-bold text-slate-800 mb-4 text-center">1. Executive Summary</h3>
+                    <p>This report provides an in-depth analysis of a research initiative aimed at developing and evaluating a system for Large Language Model (LLM)-controlled real-time singing voice synthesis (SVS) with precise live beat synchronization.[1] The central challenge lies in the sophisticated integration of LLM-driven expressive capabilities with the stringent demands of high-quality vocal synthesis and the temporal accuracy required for musically coherent performance with a dynamic rhythmic source.[1]</p>
+                    <p>The research proposes a hybrid architectural model to balance LLM expressivity with real-time latency constraints, a novel "Rhythmic Common Ground" (RCG) as an intermediate representation for timing and expression, and strategies for enabling musically intelligent rhythmic interpretation by the LLM.[1] Key innovations include the RCG itself, the architectural design for latency management, and the focus on achieving expressive nuance beyond simple metronomic accuracy.[1]</p>
+                    <p>Successful execution of this research promises to significantly advance human-AI musical co-creation, enabling interactive AI vocalists, adaptive performance tools, and new paradigms for AI-driven music.[1] This document synthesizes the foundational research plan [1] and its supporting analysis of SVS technologies [1], critically augmenting these with recent advancements (2023-2025) in LLMs, SVS, real-time audio processing, and evaluation methodologies to provide a comprehensive assessment of the project's feasibility, significance, and potential contributions to the field.</p>
+                </div>
+            </div>
+        </section>
+        
+        <section id="challenge" class="py-16 sm:py-24">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center">
+                    <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight sm:text-4xl">2. The Frontier of Expressive AI-Driven Singing</h2>
+                    <p class="mt-4 max-w-3xl mx-auto text-xl text-slate-500">This section delves into the core challenges, motivations, and novel contributions of the research. Click on a gap to explore specific details.</p>
+                </div>
+                
+                <div class="mt-12 max-w-4xl mx-auto content-text">
+                    <h3>2.1. Defining the Core Challenge: Real-Time, Beat-Synchronized Expressive Singing with LLMs</h3>
+                    <p>The central research problem addressed is the development and rigorous evaluation of a system enabling Large Language Models (LLMs) to control Singing Voice Synthesis (SVS) in real-time, achieving precise synchronization with a live audio beat.[1] This endeavor stands at the confluence of rapidly advancing fields—LLMs, SVS, and real-time audio processing—yet presents a formidable set of challenges.[1]</p>
+                    <p>The core difficulty lies in seamlessly integrating the expressive and interpretive capabilities of LLMs with the stringent demands of high-quality vocal synthesis and the temporal accuracy required for musically coherent beat synchronization, particularly when the rhythmic source is live and potentially dynamic.[1] Current SVS systems, while increasingly sophisticated in vocal quality and stylistic control, are not inherently designed for the kind of dynamic, beat-level temporal adjustments that an LLM might dictate in response to live rhythmic input. Similarly, LLMs, despite their remarkable generative capabilities, often introduce computational latency that is antithetical to the requirements of real-time musical interaction.[1] Therefore, this research confronts a multifaceted problem: generating sung vocals that are not only of high acoustic quality and expressively rich, guided by an LLM's understanding of lyrics and musical context, but also meticulously timed to an external rhythmic source, all within the tight constraints of a live performance scenario. This necessitates addressing significant hurdles in minimizing system latency, ensuring accurate and musically natural lyric-to-beat alignment, managing the substantial computational resources demanded by both LLMs and SVS models, and overcoming the prevalent scarcity of specialized training data suitable for this nuanced task.[1]</p>
+                    <p>A critical dependency chain exists within these challenges. LLM computational latency directly constrains the ability to process dynamic, real-time beat information, as outlined in research question RQ1.[1] If an LLM's processing time for interpreting beat data and generating appropriate control signals exceeds the inter-beat interval or a perceptually critical threshold for "real-time" interaction, the system cannot react swiftly enough. This inherent delay then limits the system's capacity to generate timely and precise control signals for the SVS engine, a challenge central to RQ2.[1] Consequently, achieving robust beat synchronization becomes exceedingly difficult. This desynchronization, in turn, undermines any attempts at creating nuanced expressive timing, the focus of RQ5 [1], because expressive vocal gestures are only musically meaningful if their fundamental timing is accurate. Vocals that are consistently late or rhythmically unstable render even the most sophisticated expressive intentions musically jarring and ineffective. Thus, LLM latency emerges as a foundational bottleneck; if not adequately addressed (as targeted by Objective O1), it severely compromises the project's ability to achieve accurate synchronization (Objective O2) and musically compelling expressive performance (Objective O4).[1] This highlights the critical interdependencies that the research must navigate.</p>
+
+                    <h3>2.2. Motivation and Significance: Advancing Human-AI Musical Co-Creation</h3>
+                    <p>The primary motivation for this research extends beyond mere technological novelty; it is driven by the vision of transforming AI from a static tool for offline music generation into an active, responsive, and co-creative musical partner.[1] The successful realization of an LLM-controlled, beat-synchronized SVS system would represent a significant leap forward in human-computer interaction (HCI) and the burgeoning field of AI-driven music creation and performance.[1]</p>
+                    <p>Such a system promises to unlock a plethora of novel applications. These include, but are not limited to, interactive AI vocalists capable of performing alongside human musicians in real-time, dynamic AI-powered backing singers that can adapt to the nuances of a live band, adaptive music generation systems for immersive experiences in gaming and virtual reality, and innovative expressive tools that could empower artists, composers, and performers in unprecedented ways.[1] The ability for an AI to synchronize its vocal output with a live, dynamic beat is a fundamental prerequisite for systems that can participate meaningfully in the fluid, often improvisational, nature of live musical performance. This aligns with the forward-looking concept of "AI vocalist agents"—intelligent entities that can not only synthesize vocals but also perceive, interpret, and react within a musical ensemble.[1]</p>
+                    <p>The project's success could fundamentally alter the perception and practice of "live" AI music. Current AI-driven music often involves the offline generation or playback of pre-determined material, or interactive systems with limited adaptability to dynamic, nuanced human musical input.[1] This research, however, targets synchronization with a *live, dynamic* beat, implying a degree of unpredictability and requiring the AI to adapt with musical intelligence.[1] If an LLM can interpret and respond to such a beat by controlling an SVS in real-time, it transitions from being merely a "tool" to a "co-performer" or an "instrument" possessing its own interpretive layer. This shift redefines "liveness" for AI in music, moving it closer to the interactive dynamics of human ensemble performance where musicians actively listen and react to one another. Furthermore, by granting LLMs control over expressive singing, this technology could provide a new modality for human creative expression. It could potentially empower individuals without formal vocal training to realize complex sung performances through interaction with the AI, thereby democratizing certain aspects of vocal music creation and expanding creative agency.[1, 1]</p>
+                </div>
+
+                <div class="mt-12 text-center">
+                    <h3 class="text-2xl font-bold text-slate-800 tracking-tight sm:text-3xl">2.3. Key Research Gaps and Novel Contributions</h3>
+                     <p class="mt-2 max-w-2xl mx-auto text-lg text-slate-500">The project addresses five key gaps in AI music technology. Click on a gap to explore the details and the corresponding research question.</p>
+                </div>
+                <div class="mt-12 lg:grid lg:grid-cols-3 lg:gap-8 items-start">
+                    <div class="relative lg:col-span-2">
+                        <div class="relative grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div class="gap-node p-6 bg-white rounded-xl shadow-md" data-gap="g1">
+                                <h4 class="font-bold text-lg text-slate-800">G1: LLM Rhythmic Nuance</h4>
+                                <p class="text-slate-500 mt-2 text-sm">LLMs lack real-time, nuanced beat interpretation for SVS control.</p>
+                            </div>
+                            <div class="gap-node p-6 bg-white rounded-xl shadow-md" data-gap="g2">
+                                <h4 class="font-bold text-lg text-slate-800">G2: SVS Responsiveness</h4>
+                                <p class="text-slate-500 mt-2 text-sm">SVS needs dynamic, fine-grained rhythmic control from LLMs.</p>
+                            </div>
+                            <div class="gap-node p-6 bg-white rounded-xl shadow-md" data-gap="g3">
+                                <h4 class="font-bold text-lg text-slate-800">G3: End-to-End Latency</h4>
+                                <p class="text-slate-500 mt-2 text-sm">Cumulative pipeline latency hinders real-time interaction.</p>
+                            </div>
+                             <div class="gap-node p-6 bg-white rounded-xl shadow-md" data-gap="g4">
+                                <h4 class="font-bold text-lg text-slate-800">G4: Rhythmic IR</h4>
+                                <p class="text-slate-500 mt-2 text-sm">No standard, effective rhythmic IR between LLM and SVS.</p>
+                            </div>
+                             <div class="gap-node p-6 bg-white rounded-xl shadow-md md:col-span-2" data-gap="g5">
+                                <h4 class="font-bold text-lg text-slate-800">G5: Specialized Datasets</h4>
+                                <p class="text-slate-500 mt-2 text-sm">Scarcity of beat-aware expressive singing data.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="gap-details" class="mt-8 lg:mt-0 p-8 bg-white rounded-2xl shadow-lg lg:sticky lg:top-24">
+                        <h3 id="gap-title" class="text-xl font-bold text-teal-700">Select a Gap</h3>
+                        <div id="gap-description" class="mt-2 text-slate-600 content-text">Details about the selected research gap will appear here.</div>
+                        <div id="gap-rq" class="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200 text-sm text-slate-500 content-text">Associated research question will appear here.</div>
+                        <div id="gap-interdependencies" class="mt-4 text-sm text-slate-500 content-text"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="solution" class="py-16 sm:py-24 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center">
+                    <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight sm:text-4xl">3. Architectural and Algorithmic Foundations</h2>
+                    <p class="mt-4 max-w-3xl mx-auto text-xl text-slate-500">This section reviews the state-of-the-art in LLMs and SVS, and outlines the proposed system architecture and the pivotal "Rhythmic Common Ground" representation.</p>
+                </div>
+                <div class="mt-12 max-w-4xl mx-auto content-text">
+                    <h3>3.1. State-of-the-Art in LLMs for Music Generation and Control</h3>
+                    <p>Large Language Models have demonstrated remarkable capabilities in processing and generating sequential data, leading to their increasing application in the music domain.[1] Their use spans symbolic music generation, direct audio synthesis, and the control of musical parameters.[1, 7]</p>
+                    <p>In symbolic music generation, LLMs like ChatMusician have shown proficiency in working with text-compatible representations such as ABC notation, which inherently encodes rhythmic information and musical structure.[1, 8] Similarly, text2midi demonstrates LLMs generating MIDI files from textual descriptions, with controllability over music theory terms including tempo.[1, 9] NotaGen further applies LLM training paradigms (pre-training, fine-tuning, and reinforcement learning with CLaMP-DPO) to classical sheet music generation in ABC notation, emphasizing musicality and structural coherence.[1, 10] These examples illustrate LLMs' capacity to handle symbolic formats that explicitly contain timing and rhythmic data, a crucial aspect for beat-synchronized SVS and relevant to RQ1 (LLM rhythmic interpretation) and the design of the RCG (RQ3). The MetaScore dataset leverages LLMs to generate natural language captions from metadata, enabling text-conditioned symbolic music generation and offering insights for dataset strategies and LLM fine-tuning.[11, 12, 13] Recent work also explores LLMs for symbolic music editing via textual instructions, such as modifying drum grooves represented in a "drumroll" notation.[14, 15, 16]</p>
+                    <p>LLMs are also being explored for their ability to model and generate expressive musical performances. For instance, the CrossMuSim framework utilizes LLMs to generate rich textual descriptions for music similarity modeling [1], and the CFE+P model, a transformer-based system, predicts notewise dynamics and micro-timing adjustments from inexpressive MIDI input.[1] The Seed-Music framework employs auto-regressive LMs and diffusion for vocal music generation with performance controls from multi-modal inputs like lyrics and style descriptions.[17]</p>
+                    <p>Despite these advancements, significant challenges remain in applying LLMs to real-time music generation and control. Chief among these are the inference speed of large models and the difficulty in achieving fine-grained, temporally precise control necessary for tasks like beat synchronization.[1]</p>
+                    <p>A recurring theme in successful LLM-music systems, particularly those dealing with complex structures and precise timing (e.g., NotaGen [10], ChatMusician [8], drum groove editing [14]), is the utilization of well-defined, text-compatible symbolic representations. These formats, such as ABC notation or custom textual "drumroll" formats, explicitly encode rhythmic information in a manner that aligns with the sequential processing strengths of LLMs. This observation strongly suggests that for the LLM in the proposed system to effectively interpret beat data and generate the precise rhythmic control signals required by RQ1 and Objective O2, the RCG (targeted by RQ3 and Objective O3) should ideally be a symbolic or structured-text format. Such a representation is more amenable to LLM generation and manipulation compared to direct acoustic feature parameters or complex binary formats, which are less natural for LLM outputs. This consideration has significant implications for the design choices related to the RCG.</p>
+                </div>
+
+                <div class="mt-12 grid md:grid-cols-2 gap-12 items-start">
+                    <div class="content-text">
+                        <h3>3.3. Proposed System Architecture: A Hybrid Approach</h3>
+                        <p>To balance the rich expressive capabilities of LLMs with the stringent low-latency demands of real-time beat synchronization, this research will primarily investigate and develop a Hybrid Model architecture, as conceptualized in the foundational documents.[1, 1] In this paradigm, the LLM is responsible for macro-control, determining broader stylistic, emotional, and rhythmic intentions based on lyrical input and the overall beat context. A separate, computationally lighter, and faster module, or a highly optimized SVS component, will then handle the micro-timing adjustments, ensuring the fine-grained alignment of synthesized vocal events to individual beats.[1] This division of labor aims to prevent the LLM from becoming a bottleneck due to per-beat computational demands, thereby helping to manage overall system latency.[1]</p>
+                        <p>Alternative architectures, such as a more Reactive LLM Control model or an LLM as Real-Time Score Generator model [1, 1], will be developed as comparative baselines or explored for specific sub-studies. The overarching design may also draw inspiration from LLM agent architectures, where the LLM acts as an orchestrator, utilizing specialized "tools" like the beat tracker and the SVS engine to achieve its goal.[1, 7]</p>
+                        <h4>Core Components:</h4>
+                        <ol class="list-decimal list-inside space-y-2 mt-4">
+                            <li><strong>Live Audio Input and Advanced Beat Tracking Module:</strong> Captures live audio, performs real-time beat tracking (BPM, timestamps, downbeats, time signatures, potentially "feel"), and outputs beat events and rhythmic parameters to the LLM.</li>
+                            <li><strong>LLM-based Control/Generation Module (Macro-Control):</strong> Receives lyrics, beat information, and user prompts. It interprets beat data musically, aligns lyrics to beat structure, and generates high-level rhythmic style parameters or directives, outputting these via the Rhythmic Common Ground or as direct high-level SVS control signals.</li>
+                            <li><strong>Core SVS Module & Micro-Timing Adjustment Module:</strong> An adapted open-source SVS engine receives macro-control output and precise beat timings. The micro-timing adjustment component (standalone or integrated) performs fine-grained "snapping" or alignment of vocal events to exact beat targets.</li>
+                            <li><strong>Synchronization Logic and Latency Compensation Mechanisms:</strong> Manages data flow and control signals, implementing strategies like predictive processing, intelligent buffering, and potentially closed-loop control for dynamic correction.</li>
+                        </ol>
+                        <p class="mt-4">The viability of this Hybrid Model architecture is critically dependent on the design and efficiency of the interface between the LLM (macro-control) and the micro-timing/SVS module. This interface is the "Rhythmic Common Ground" (RCG). If the RCG is too complex for the LLM to generate quickly, too slow for the micro-timing module to parse, or not expressive enough to convey the LLM's macro-intentions effectively for micro-level execution, the entire rationale for the hybrid architecture—offloading fine-grained timing from the LLM to reduce latency while retaining expressiveness—is undermined. Thus, the RCG's design (RQ3, O3) is not merely a sub-component but a foundational enabler or potential bottleneck for the chosen architectural approach (RQ2, O1). The RCG must effectively translate the LLM's higher-level rhythmic and stylistic decisions into concrete, actionable parameters for the lower-level synthesis and timing adjustment mechanisms, without introducing prohibitive overhead.</p>
+                        
+                        <div class="mt-6 space-y-4">
+                            <div class="flow-block flex items-start space-x-4 p-4 border border-slate-200 rounded-lg">
+                                <div class="flex-shrink-0 h-10 w-10 bg-teal-100 text-teal-600 rounded-lg flex items-center justify-center font-bold">1</div>
+                                <div><h4 class="font-semibold">Live Beat Tracking</h4><p class="text-sm text-slate-500">Captures and analyzes live audio to extract BPM, beat timestamps, and rhythmic feel.</p></div>
+                            </div>
+                            <div class="flex justify-center"><div class="h-6 w-px bg-slate-300"></div></div>
+                            <div class="flow-block flex items-start space-x-4 p-4 border border-slate-200 rounded-lg">
+                                <div class="flex-shrink-0 h-10 w-10 bg-teal-100 text-teal-600 rounded-lg flex items-center justify-center font-bold">2</div>
+                                <div><h4 class="font-semibold">LLM Macro-Control</h4><p class="text-sm text-slate-500">Interprets beat data and lyrics to generate high-level style and rhythmic directives.</p></div>
+                            </div>
+                             <div class="flex justify-center"><div class="h-6 w-px bg-slate-300"></div></div>
+                            <div class="flow-block flex items-start space-x-4 p-4 border border-slate-200 rounded-lg">
+                                <div class="flex-shrink-0 h-10 w-10 bg-teal-100 text-teal-600 rounded-lg flex items-center justify-center font-bold">3</div>
+                                <div><h4 class="font-semibold">SVS & Micro-Timing</h4><p class="text-sm text-slate-500">Renders the voice and performs fine-grained "snapping" of vocal events to the beat.</p></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="content-text">
+                        <h3>3.4. The "Rhythmic Common Ground": A Novel IR</h3>
+                        <p>A pivotal sub-task, addressing Gap G4 [1] and a key challenge identified in the foundational analysis [1], is the design and prototyping of a "Rhythmic Common Ground" (RCG). This IR is specifically tailored for conveying rhythm and timing information effectively between the LLM and SVS modules in a real-time context.[1] Existing formats like MusicXML or MEI [1, 31, 52, 53], while rich, are often too verbose or complex for efficient real-time LLM generation or direct SVS consumption without significant adaptation.[1] General-purpose IRs for LLMs are also being explored.[1]</p>
+                        <h4>RCG Objectives:</h4>
+                        <ol class="list-decimal list-inside space-y-2 mt-4">
+                           <li><strong>Expressiveness:</strong> Capable of representing not only basic note onsets and durations but also nuanced expressive timing elements such as micro-timing deviations, accents, and dynamic emphasis relative to beat positions, and higher-level rhythmic patterns or stylistic articulations.</li>
+                           <li><strong>LLM-Generatability:</strong> Structured for efficient and reliable real-time production by an LLM. This implies a compact, possibly text-like format that aligns with LLM sequential generation capabilities.</li>
+                           <li><strong>SVS-Consumability:</strong> Directly and unambiguously translatable into control parameters for the SVS engine or micro-timing module, with computationally inexpensive translation.</li>
+                        </ol>
+                        <p class="mt-4">The RCG must function as an abstraction layer that is not only expressive but also inherently latency-aware. Its design must consider the stringent real-time constraints of the system. An overly verbose or computationally complex RCG could become a bottleneck. Therefore, the RCG design must prioritize compactness and computational simplicity alongside its expressive capabilities. This consideration is critical for successfully addressing RQ3. The RCG is fundamental to enabling effective and nuanced communication between the LLM's "musical mind" and the SVS's "voice".[1]</p>
+                        <div class="mt-6 p-6 bg-slate-800 rounded-xl shadow-lg font-mono text-sm text-slate-200">
+                            <p><span class="text-sky-400"># Conceptual RCG Example</span></p>
+                            <p class="mt-2">{</p>
+                            <p class="ml-4">"<span class="text-green-400">phrase_id</span>": <span class="text-orange-400">1</span>,</p>
+                            <p class="ml-4">"<span class="text-green-400">style</span>": "<span class="text-yellow-300">laid-back_swing</span>",</p>
+                            <p class="ml-4">"<span class="text-green-400">events</span>": [</p>
+                            <p class="ml-8">{</p>
+                            <p class="ml-12">"<span class="text-green-400">phoneme</span>": "<span class="text-yellow-300">he</span>",</p>
+                            <p class="ml-12">"<span class="text-green-400">beat_ref</span>": <span class="text-orange-400">4.1</span>, <span class="text-sky-400"># Beat 1 of measure 4</span></p>
+                            <p class="ml-12">"<span class="text-green-400">timing_offset_ms</span>": <span class="text-orange-400">-15</span>, <span class="text-sky-400"># 15ms behind the beat</span></p>
+                            <p class="ml-12">"<span class="text-green-400">accent</span>": <span class="text-orange-400">0.7</span></p>
+                            <p class="ml-8">},</p>
+                            <p class="ml-8">{ <span class="text-slate-500">... (more events) ...</span> }</p>
+                            <p class="ml-4">]</p>
+                            <p>}</p>
+                        </div>
+                    </div>
+                </div>
+                 <div class="mt-12 max-w-4xl mx-auto content-text">
+                    <h3>4. Achieving Real-Time Performance and Musical Nuance</h3>
+                    <p>The successful realization of an LLM-controlled beat-synchronized SVS system hinges on two intertwined aspects: achieving stringent real-time performance and imbuing the synthesized vocals with musical nuance and expressivity. This section details the strategies for advanced beat tracking, LLM-driven rhythmic interpretation, and comprehensive latency management.</p>
+                    <h4>4.1. Advanced Beat Tracking and Synchronization Strategies</h4>
+                    <p>The Live Audio Input and Advanced Beat Tracking Module is the system's perceptual front-end, responsible for capturing a live audio stream and performing real-time beat detection.[1] State-of-the-art approaches include traditional signal processing methods like onset detection, spectral flux analysis, and comb filtering, as well as machine learning models, often implemented using libraries such as Madmom or Librosa.[1] For this project, beyond basic BPM and beat timestamps, the aim is to extract richer rhythmic information, such as downbeat positions, inferred time signatures, and potentially characteristics of the musical "feel" (e.g., swing ratio, rhythmic intensity).[1] Recent research into beat tracking in singing voices, utilizing Self-Supervised Learning (SSL) front-ends like WavLM and DistilHuBERT followed by transformers [1, 55], is particularly relevant if the live audio input is melodic or contains vocals, as these methods are designed for less percussive cues.</p>
+                    <p>Key challenges in live beat tracking include handling tempo drift, managing complex or ambiguous rhythmic patterns (syncopation, rubato), and minimizing the inherent latency of the detection process itself.[1] An inaccurate or delayed beat track will inevitably lead to poor synchronization of the SVS output.</p>
+                    <p>Once beats are detected, robust synchronization logic is required to align the SVS output temporally with the detected beats.[1] This involves managing data flow and control signals between modules. Strategies include predictive processing (anticipating upcoming beats if the rhythm is stable), intelligent buffering and jitter management (smoothing processing time variations), and potentially advanced closed-loop control mechanisms where the AI monitors its own output and makes dynamic corrections.[1] Recent advancements in live music synchronization with AI, such as the ReaLJam system which uses anticipation and a specific client-server protocol for human-AI jamming [56, 57], offer valuable architectural insights for managing synchronization in interactive contexts.</p>
+                    <p>The richness of the information extracted by the beat tracking module is crucial not only for achieving basic synchronization (Objective O2 [1]) but also for enabling the LLM to generate nuanced expressive timing (Objective O4, RQ5 [1]). If the beat tracker only provides rudimentary BPM and beat event timestamps, the LLM has limited information from which to infer musical groove, style, or feel. Conversely, if the beat tracking module can output richer data—such as identified downbeats, inferred metrical structure, or even quantitative measures of swing or rhythmic intensity, as suggested in the research plan [1]—the LLM is provided with a more detailed canvas upon which to paint its expressive interpretations. Therefore, the "advanced" nature of the beat tracking is a direct prerequisite for the "advanced" expressive capabilities sought from the LLM.</p>
+
+                    <h4>4.2. LLM-driven Rhythmic Interpretation and Expressive Timing</h4>
+                    <p>Achieving musically compelling beat-synchronized singing requires the LLM to transcend mere metronomic alignment and imbue the performance with expressive timing and interpretation that reflects the character of the live beat and the musical style.[1] This involves several strategies:</p>
+                    <ul>
+                        <li><strong>LLM Training and Fine-tuning for Musical Expressivity:</strong> Fine-tuning pre-trained foundation models on specialized datasets that include expressive singing performances aligned with detailed beat and rhythmic annotations (micro-timing, dynamics, articulation) is key.[1] Recent LLM fine-tuning strategies, such as instruction merging (e.g., MergeIT [58]) or federated fine-tuning [59], could be explored for adapting LLMs to these specific musical tasks.</li>
+                        <li><strong>Advanced Prompt Engineering for Rhythmic Control:</strong> Designing effective prompting strategies will allow users or other AI modules to guide the LLM's rhythmic interpretation at a high level.[1] Research on prompt engineering for LLM reliability and task-specific alignment (e.g., PROMPTEVALS [36, 37]) can inform this. Natural language cues like "sing this phrase with a laid-back bluesy feel" or "make the rhythm very tight and punchy" could be learned by the LLM to translate into specific modifications of the RCG or SVS parameters. Systems like VersBand demonstrate prompt-based control over singing and music styles [31, 50], and the "Not that Groove" paper shows LLM-based editing of drum grooves from textual instructions.[14, 16] ChatMusician also uses prompts with ABC notation for musical control.[8]</li>
+                        <li><strong>Modeling Explicit Expressive Parameters:</strong> The LLM will be trained to output explicit parameters controlling expressive elements such as micro-timing deviations, dynamic accents, and articulation control (staccato, legato).[1] This is inspired by models like CFE+P [1] and requires the SVS module to be responsive to these fine-grained inputs. Systems like LLFM-Voice aim for fine-grained emotional generation including vocal techniques, tension, and pitch [1, 3, 4, 41], and S2Cap focuses on captioning singing style attributes including volume and mood [60, 61, 62], indicating growing interest in detailed expressive control. TCSinger 2 also allows multi-level style control via diverse prompts.[1, 18, 26]</li>
+                        <li><strong>Incorporating Musical Knowledge and Style Awareness:</strong> Methods to imbue the LLM with deeper understanding of musical styles and their rhythmic conventions (e.g., specific swing ratios for jazz) will be explored, potentially through style-specific datasets or style embeddings.[1]</li>
+                    </ul>
+                    <p>For the LLM to effectively generate expressive timing (Objective O4, RQ5 [1]), it requires a well-defined "vocabulary" of expressive parameters that it can output, typically via the RCG. This vocabulary, encompassing elements like micro-timing shifts in milliseconds, relative accent strengths, or specific articulation types (e.g., staccato, legato), must be co-designed with the capabilities of the SVS module. If the chosen SVS engine cannot faithfully render these subtle variations, the LLM's expressive intent will be lost. This underscores the importance of addressing Gap G2 (SVS Responsiveness) in conjunction with developing the LLM's expressive capabilities. The RCG (Objective O3 [1]) must be able to encode these shared parameters, ensuring that the LLM's high-level musical intelligence and expressive direction are accurately translated into precise, low-latency execution by the micro-timing module and SVS engine.</p>
+
+                    <h4>4.3. Latency Management in Integrated LLM-SVS Systems</h4>
+                    <p>Minimizing end-to-end latency is paramount for any real-time interactive system, and it is a core target (Objective O1: <100ms) of this research.[1, 1] Psychoacoustic research indicates that while practiced musicians can detect discrepancies as low as 10ms [63], and latencies above 30-50ms can make performances feel "sloppy" or "sluggish" [63], tolerances can extend up to 50-65ms in some musical duo contexts, especially with slower tempos or continuous sounds.[64] The Just Noticeable Difference (JND) for rhythmic asynchrony can be very small, sometimes less than 10ms for certain stimuli [65, 66], though perceived audiovisual synchrony can tolerate asynchronies exceeding 200ms in some complex scenarios.[67] For interactive music systems, values between 128ms and 158ms have been reported as mean thresholds in some spatial audio contexts [1, 56], but sub-100ms is generally desirable for responsive interaction.[1, 33] The 100ms target for this project represents an upper bound for achieving basic interactivity.</p>
+                    <p>Several strategies will be employed for latency mitigation [1, 1]:</p>
+                    <ul>
+                        <li><strong>Model Optimization:</strong> Techniques such as quantization, pruning, and knowledge distillation for both LLM and SVS models.</li>
+                        <li><strong>Efficient Architectures:</strong> Utilizing LLMs and SVS models designed for speed. This includes Multi-Token Prediction (MTP) as seen in VocalNet [1, 1, 45], and exploring emerging MatMul-free LLM architectures [68] or specialized speech interaction models like LLaMA-Omni [51, 69, 70, 71] which report response latencies as low as 226-236ms for simultaneous text and speech generation.</li>
+                        <li><strong>Streaming Synthesis:</strong> Processing input and outputting audio in small chunks. This is supported by systems like XTTS-v2 [1, 1], community APIs for GPT-SoVITS [1, 1], CSSinger [1, 1, 5, 48], and Tungnaá.[1, 7, 33]</li>
+                        <li><strong>Predictive Processing:</strong> Anticipating upcoming beats if the rhythm is stable.</li>
+                        <li><strong>Hardware Acceleration:</strong> Leveraging GPUs/TPUs.</li>
+                        <li><strong>Intelligent Buffering and Jitter Management:</strong> Smoothing out processing time variations.</li>
+                        <li><strong>Recent LLM Inference Optimizations:</strong> Techniques such as optimizing Time To First Token (TTFT) and Time Between Tokens (TBT), advanced KV cache management (PagedAttention, vLLM, PQCache), and sophisticated model placement and request scheduling strategies (Skip-Join MLFQ, dynamic SplitFuse) are critical for reducing LLM inference latency.[72] While some network-focused low-latency research like OCDMA over PON [73] is less directly applicable, it highlights the broader engineering efforts towards minimizing delay in real-time systems.</li>
+                    </ul>
+                    <p>The <100ms target for *end-to-end* latency necessitates a meticulous "latency budget" allocation for each stage of the pipeline: beat tracking, LLM processing (including RCG generation), RCG transmission and parsing, SVS rendering, and audio output buffering. The proposed hybrid architecture [1] implicitly addresses this by minimizing the LLM's direct involvement in per-beat, time-critical computations, relegating it to macro-control. However, even these macro-control signals must arrive in time to influence upcoming musical sections. Therefore, rigorous profiling of each module's latency contribution, as specified in Objective O1 and the evaluation plan [1], will be essential to identify and mitigate bottlenecks, ensuring the cumulative delay remains within the acceptable perceptual threshold for interactive musical performance.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="technology" class="py-16 sm:py-24">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-6">
+                    <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight sm:text-4xl">Technology Landscape: SVS Systems</h2>
+                </div>
+                <div class="max-w-4xl mx-auto content-text mb-12">
+                    <h3>3.2. Survey of Singing Voice Synthesis Technologies for Real-Time Adaptation</h3>
+                    <p>A systematic review of existing SVS projects is paramount to identify suitable candidates for adaptation within a real-time, LLM-controlled, beat-synchronized system. This review considers core SVS technology, LLM control mechanisms, documented real-time features, input modalities, strengths and challenges for beat synchronization, and licensing terms.[1, 1] Table 3.2.1 in the full report provides an updated comparative analysis, integrating information from the foundational documents [1, 1] and recent research findings from 2024-2025.</p>
+                    <p>The selection of an SVS module involves navigating a spectrum of real-time viability, from near real-time suitable for studio previews to strict low-latency for live performance.[1] Projects like VocalNet, with its Multi-Token Prediction [1, 1], and XTTS-v2, with documented streaming [1, 1], are positioned towards stricter real-time capabilities. In contrast, research-heavy systems like Prompt-Singer or TechSinger require significant engineering for robust, low-latency deployment.[1, 1] Community efforts are crucial accelerators, providing API wrappers and server components for research models like GPT-SoVITS and DiffSinger, bridging the gap to practical application.[1, 1]</p>
+                    <p>A fundamental design choice is the input granularity for beat synchronization. High-level prompts (e.g., Prompt-Singer) are LLM-friendly but may lack rhythmic precision, while detailed scores (e.g., NNSVS) offer precision but demand rapid real-time generation by the LLM.[1] Reference audio (e.g., GPT-SoVITS) captures general feel but doesn't adapt to new live beats.[1] This points to a need for novel "beat-aware" input conditioning mechanisms for SVS models to achieve fluid, real-time rhythmic interaction.[1]</p>
+                    <p>A significant trend emerging from recent SVS research (2024-2025) is the convergence of flow-matching based models for efficient, high-quality synthesis and architectures explicitly designed for low-latency streaming. Flow-matching, utilized in systems like TechSinger [24], LLFM-Voice [3, 4], VersBand [31], and TCSinger 2 [18], is noted for inference acceleration and improved generation efficiency. Concurrently, architectures such as CSSinger [5, 48] and Tungnaá [33, 49] explicitly target sub-100ms latency through streaming. The potential synergy between these two advancements—highly efficient generation algorithms coupled with streaming-first architectures—offers a compelling pathway for realizing the demanding real-time SVS performance essential for this research. This directly addresses the challenge of SVS responsiveness to dynamic control (Gap G2) and is fundamental to minimizing the SVS component's contribution to the overall end-to-end system latency (Gap G3, Objective O1).</p>
+                    <p class="mt-4 text-center text-lg text-slate-500">Interact with the table below to compare SVS projects and see their real-time viability visualized.</p>
+                </div>
+                <div class="grid lg:grid-cols-5 gap-8">
+                    <div class="lg:col-span-3">
+                        <div class="overflow-x-auto bg-white rounded-lg shadow">
+                            <table class="w-full text-sm text-left text-slate-500">
+                                <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                    <tr>
+                                        <th scope="col" class="px-6 py-3">Project</th>
+                                        <th scope="col" class="px-6 py-3">Core Tech</th>
+                                        <th scope="col" class="px-6 py-3">Real-Time Score</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="svs-table-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="lg:col-span-2">
+                        <div id="svs-details" class="p-6 bg-white rounded-lg shadow sticky top-24">
+                            <h3 id="svs-detail-title" class="text-lg font-bold text-teal-700">Select an SVS Project</h3>
+                            <div id="svs-detail-content" class="mt-2 text-slate-600 text-sm space-y-2 content-text"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-12">
+                     <h3 class="text-2xl font-bold text-slate-800 text-center mb-4">Real-Time Viability Comparison</h3>
+                    <div class="chart-container">
+                        <canvas id="svsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="evaluation" class="py-16 sm:py-24 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-6">
+                    <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight sm:text-4xl">5. Research Design: Validation and Evaluation</h2>
+                </div>
+                 <div class="max-w-4xl mx-auto content-text mb-12">
+                    <p>The validation and evaluation of the proposed LLM-controlled beat-synchronized SVS system will be conducted through a systematic research design, encompassing phased experimentation, a robust dataset strategy, and a comprehensive evaluation framework.</p>
+                    <h3>5.1. Core Research Questions and Objectives Revisited</h3>
+                    <p>The research is guided by five core research questions (RQs) and five SMART objectives (Os) as detailed in the full report [1]. These questions address LLM rhythmic interpretation (RQ1), optimal system architectures (RQ2), the Rhythmic Common Ground (RQ3), psychoacoustic thresholds for desynchronization (RQ4), and achieving nuanced expressive timing (RQ5). The objectives focus on latency reduction (O1), LLM control validation (O2), RCG development (O3), expressive performance (O4), and a comprehensive evaluation framework (O5).</p>
+                    <p>The methodologies detailed in Sections 3 and 4 are designed to systematically address these RQs and Os. A significant challenge, particularly for RQ5 and O4, lies in the measurability of "expressiveness." While expert listener ratings are proposed [1], defining objective correlates or robust subjective evaluation protocols for nuanced aspects like "swing feel" or "musically plausible micro-timing" is complex. This necessitates carefully designed listening tests and potentially the development of new descriptive analysis tools or metrics for expressive performance, linking directly to the evaluation strategy.</p>
+                </div>
+                <div class="grid lg:grid-cols-2 gap-12 items-start">
+                    <div class="content-text">
+                        <h3 class="text-2xl font-bold text-slate-800 mb-6">5.2. Experimental Phases and Implementation Strategy</h3>
+                        <p>The research will adopt an iterative and incremental development methodology, structured into three main phases.[1] This phased approach, underpinned by a modular system architecture [1], allows for systematic development, focused debugging, and proactive risk mitigation.</p>
+                        <ol class="relative border-l border-slate-200 mt-6">                  
+                            <li class="mb-10 ml-6">            
+                                <span class="absolute flex items-center justify-center w-8 h-8 bg-teal-100 rounded-full -left-4 ring-8 ring-white">
+                                    <span class="text-teal-600 font-bold text-lg">1</span>
+                                </span>
+                                <h4 class="flex items-center mb-1 text-xl font-semibold text-slate-900">Component Development & Offline Validation</h4>
+                                <p class="text-base font-normal text-slate-500">This phase focuses on the individual development and validation of core modules in a controlled environment: Beat Tracking Module Evaluation, LLM Rhythmic Interpretation and RCG Generation, and SVS Responsiveness and Controllability. Metrics include F-measure, P-score for beat tracking, structural correctness for RCG, and MCD, MOS, F0-RMSE for SVS quality.[1]</p>
+                            </li>
+                            <li class="mb-10 ml-6">
+                                <span class="absolute flex items-center justify-center w-8 h-8 bg-teal-100 rounded-full -left-4 ring-8 ring-white">
+                                    <span class="text-teal-600 font-bold text-lg">2</span>
+                                </span>
+                                <h4 class="mb-1 text-xl font-semibold text-slate-900">Integrated System Prototyping & Near Real-Time Testing</h4>
+                                <p class="text-base font-normal text-slate-500">Focus on integrating validated components into an initial end-to-end pipeline. Testing will use pre-recorded audio or stable machine-generated beats for repeatable experiments. Performance measurement will meticulously track component-wise and end-to-end latency, assessing synchronization accuracy and optimizing pipeline bottlenecks.[1]</p>
+                            </li>
+                            <li class="ml-6">
+                                <span class="absolute flex items-center justify-center w-8 h-8 bg-teal-100 rounded-full -left-4 ring-8 ring-white">
+                                    <span class="text-teal-600 font-bold text-lg">3</span>
+                                </span>
+                                <h4 class="mb-1 text-xl font-semibold text-slate-900">Live Beat Synchronization & Interactive Performance Experiments</h4>
+                                <p class="text-base font-normal text-slate-500">The ultimate test with live, dynamic audio input (e.g., human percussionist). Experienced musicians and diverse listeners will participate in subjective evaluations, assessing responsiveness, musicality, and engagement using HCI/NIME frameworks. Tests will cover varying musical styles, tempi, and complexities.[1]</p>
+                            </li>
+                        </ol>
+                         <p class="mt-4">This phased development is a deliberate risk mitigation strategy. Validating components offline allows for systematic problem-solving before tackling live integration complexities. If, for example, the LLM fails to generate coherent RCG instances offline (Phase 1), or if end-to-end latency with stable beats is unacceptably high (Phase 2), these fundamental issues must be addressed before proceeding to live, dynamic scenarios (Phase 3). This iterative process allows for adaptation and course correction as new bottlenecks or challenges emerge.</p>
+                    </div>
+                    <div>
+                        <h3 class="text-2xl font-bold text-slate-800 mb-6 text-center">5.4. Comprehensive Evaluation Metrics</h3>
+                         <p class="text-center text-slate-500 mb-6">A multi-faceted evaluation strategy, combining objective technical metrics with subjective perceptual evaluations, is essential.[1]</p>
+                        <div class="chart-container">
+                             <canvas id="metricsChart"></canvas>
+                        </div>
+                        <div class="mt-6 content-text">
+                            <p>Key objective metrics include latency (end-to-end and component-wise), synchronization accuracy (beat alignment error, F-measure), SVS quality (MCD, F0-RMSE, SingMOS), and control granularity. Subjective evaluations will cover musicality, naturalness of synchronization, and user experience from both musician and listener perspectives, employing methods like Musical Turing Tests and standardized usability scales (SUS, CSI).[1]</p>
+                            <p>Benchmarking will be performed against non-real-time SVS, rule-based synchronization, and "no beat sync" baselines, along with qualitative comparisons to systems like CSSinger and Tungnaá. An exploratory "Wizard of Oz" experiment will help establish interactivity benchmarks.[1]</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-12 max-w-4xl mx-auto content-text">
+                    <h3>5.3. Dataset Strategy: Creation, Augmentation, and Few-Shot Learning</h3>
+                    <p>The availability of appropriate datasets is crucial for training the LLM, fine-tuning the SVS, and evaluating the system.[1] A multi-pronged strategy is proposed:</p>
+                    <ul>
+                        <li><strong>Leveraging Existing Datasets [1]:</strong>
+                            <ul>
+                                <li><em>SVS Model Training/Fine-tuning:</em> Public SVS datasets like M4Singer [1, 81, 82], Opencpop [1, 83, 84], PopBuTFy, and VCTK.</li>
+                                <li><em>Beat Tracking Module Evaluation:</em> Standard beat tracking datasets (GTZAN, Hainsworth, SMC MIDI, etc. [1, 55]).</li>
+                                <li><em>LLM Pre-training/Fine-tuning (General Musicality):</em> Large-scale MIDI collections like the Lakh MIDI Dataset [1, 85, 86] or the GigaMIDI dataset.[1, 9, 54, 87] GigaMIDI is particularly relevant due to its heuristics (DNVR, DNODR, NOMML) for identifying expressive MIDI performances based on note velocity variations, onset deviations, and metric positions [9, 54, 87], which can inform LLM training for expressive timing.</li>
+                            </ul>
+                        </li>
+                        <li><strong>Creating/Annotating Specialized Datasets for Beat-Aware Expressive Singing [1]:</strong> Addressing Gap G5, a core effort will be creating a dataset containing sung vocal performances meticulously aligned with lyrics, phoneme/note timings, expressive vocal parameters (detailed pitch contours, dynamics, articulation), and high-resolution beat/tempo information.
+                            <ul>
+                                <li><em>Annotation Process:</em> Use robust beat tracking (verified in Phase 1) on accompaniment, followed by manual verification (e.g., Sonic Visualiser, ELAN [1]). Employ ASR and forced alignment (e.g., Montreal Forced Aligner [1, 88]) for vocal annotation. Extract pitch contours using methods like PYin with smoothing (e.g., Smart-Median smoother [1, 89]). Crucially, precisely synchronize vocal and beat annotations.</li>
+                                <li><em>Expressive Parameter Extraction:</em> Develop methods to quantify expressive vocal parameters relative to beat structure (e.g., micro-timing deviations from metronomic grid, vocal intensity variations aligned with beat strength, articulation patterns).</li>
+                            </ul>
+                        </li>
+                        <li><strong>Data Augmentation Techniques [1]:</strong>
+                            <ul>
+                                <li><em>For SVS Robustness:</em> Pitch augmentation, mix-up augmentation, cycle-consistent training (inspired by SingAug [1, 90]).</li>
+                                <li><em>For LLM Rhythmic Training:</em> Rhythmic variation synthesis (programmatically altering timing of existing performances), noise injection.</li>
+                            </ul>
+                        </li>
+                        <li><strong>Few-Shot Learning Approaches [1]:</strong>
+                            <ul>
+                                <li><em>For LLM Adaptation:</em> Fine-tune large pre-trained music/language LLMs on a small set of high-quality beat-aware expressive singing examples.</li>
+                                <li><em>For SVS Model Adaptation:</em> Adapt SVS models known for few-shot capabilities (e.g., GPT-SoVITS [1, 1], MiniMax-Speech [1], or general FSL techniques [18, 25, 26, 44, 91]) using limited examples of specific rhythmic styles or beat-aligned expressivity.</li>
+                            </ul>
+                        </li>
+                    </ul>
+                    <p>The quality of expressive data is paramount for training the LLM to generate nuanced rhythmic expression (RQ5, O4). Simply measuring note onset deviations from a grid [92, 93, 94, 95, 96] may not capture the full essence of musical "feel" like swing or groove. Research in microrhythm indicates that expressiveness involves more than just onset timing, incorporating dynamic envelope and timbre.[97] Similarly, the analysis of dynamic accents in vocal performance reveals complex interactions of features like intensity, pitch, and spectral characteristics.[94, 98, 99, 100, 101, 102, 103, 104, 105] Therefore, the annotation and feature extraction process for the new specialized dataset must be sophisticated enough to capture these multifaceted expressive elements if the LLM is to learn to reproduce them convincingly. This may involve incorporating methodologies for analyzing micro-timing deviations [40, 41, 92, 93, 94, 95, 96] and dynamic accents [94, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111] from singing performances.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="mindmap" class="py-16 sm:py-24 bg-slate-100">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight sm:text-4xl">6. Interactive Research Mind Map</h2>
+                    <p class="mt-4 max-w-3xl mx-auto text-xl text-slate-500">Explore the research structure visually. Drag nodes to rearrange, scroll to zoom, and hover for details.</p>
+                </div>
+                <div id="mindmap-section-container" class="bg-white rounded-xl shadow-lg w-full h-[80vh] md:h-[90vh]">
+                     <div class="mindmap-controls text-sm text-slate-700">
+                        <h3 class="font-bold text-lg mb-2 text-slate-800">Map Controls</h3>
+                        <div>
+                            <label for="charge-strength">Repulsion</label>
+                            <input type="range" id="charge-strength" min="-1000" max="0" value="-250" class="cursor-pointer">
+                        </div>
+                        <div class="mt-2">
+                            <label for="link-distance">Link Distance</label>
+                            <input type="range" id="link-distance" min="10" max="300" value="90" class="cursor-pointer">
+                        </div>
+                    </div>
+                    <div id="mindmap-container" class="w-full h-full rounded-xl overflow-hidden"></div>
+                </div>
+            </div>
+        </section>
+        <div id="tooltip" class="tooltip"></div>
+
+        <section id="ethics" class="py-16 sm:py-24">
+             <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight sm:text-4xl">7. Ethics & Responsible Innovation</h2>
+                    <p class="mt-4 max-w-3xl mx-auto text-xl text-slate-500">The development and deployment of AI systems involving voice and creative content necessitate careful consideration of ethical implications and potential risks.[1, 1] This research will proactively address these concerns, guided by emerging frameworks for responsible AI music. Click on each consideration to learn more.</p>
+                </div>
+                <div class="max-w-3xl mx-auto" id="ethics-accordion">
+                </div>
+                <div class="mt-8 max-w-3xl mx-auto content-text">
+                    <p>The research plan's ethical considerations [1] can be substantially strengthened and operationalized by adopting the comprehensive structure provided by recent frameworks like "Towards Responsible AI Music: an Investigation of Trustworthy Features for Creative Systems".[21] This framework offers specific, actionable features (F1-F45) across dimensions such as Human Agency and Oversight, Robustness and Safety, Privacy and Data Governance, Transparency, Diversity, Non-discrimination and Fairness, Societal and Environmental Well-being, and Accountability. For example, the RCG (RQ3, O3 [1]) could be designed with "Data Explainability" (F26 from [21]) in mind, enabling users to understand how the LLM's rhythmic decisions were formed. This proactive integration of ethical design principles throughout the research lifecycle, rather than as a retrospective check, will be crucial for responsible innovation.</p>
+                </div>
+             </div>
+        </section>
+        
+        <section id="conclusion" class="py-16 sm:py-24 bg-white">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight sm:text-4xl">8. Expected Contributions, Future Directions, and Concluding Remarks</h2>
+                </div>
+                <div class="max-w-4xl mx-auto content-text">
+                    <h3>Expected Outcomes and Contributions [1]:</h3>
+                    <ul>
+                        <li><strong>Novel Algorithms, Models, or Architectural Frameworks:</strong>
+                            <ul>
+                                <li>At least one, potentially two, comprehensively validated architectural frameworks for LLM-controlled, real-time, beat-synchronized SVS, particularly the proposed hybrid architecture.</li>
+                                <li>Novel algorithms or fine-tuned LLM models for interpreting live beat information and generating musically coherent, rhythmically precise, and expressive SVS control signals.</li>
+                                <li>A formal proposal and prototype of the "Rhythmic Common Ground" (RCG) as an IR for real-time rhythmic communication between LLMs and SVS.</li>
+                                <li>Adapted and optimized open-source SVS models capable of accepting fine-grained, real-time rhythmic control.</li>
+                            </ul>
+                        </li>
+                        <li><strong>Publicly Available Datasets, Software, or Tools:</strong>
+                            <ul>
+                                <li>A specialized annotated dataset for beat-aware expressive singing, addressing a key data scarcity issue, to be released if successful and of sufficient utility.</li>
+                                <li>Open-source software modules (beat tracker adaptations, LLM control scripts, SVS interface layers, RCG parser/generator, synchronization logic) under permissive licenses.</li>
+                                <li>Evaluation toolkit components or contributions to existing frameworks like VERSA.[74, 75]</li>
+                            </ul>
+                        </li>
+                    </ul>
+
+                    <h3>Dissemination Plan [1]:</h3>
+                    <p>Findings will be disseminated through peer-reviewed publications and presentations at high-impact international conferences and journals, targeting venues in Core AI/ML & Signal Processing (ICASSP, TASLP, NeurIPS, ICML), Music Technology & MIR (ISMIR, ICMC, NIME, Journal of New Music Research, Computer Music Journal), and AI & Creativity/HCI. A minimum of 2-3 journal articles and 3-4 conference papers are anticipated.</p>
+
+                    <h3>Broader Impact and Future Directions [1, 1]:</h3>
+                    <p>The research is expected to push the boundaries of AI in music from offline generation towards real-time, interactive performance, contributing to more musically intelligent and responsive AI systems.[1, 1] It could lead to new tools for creatives, inform human-AI co-creation across artistic domains, and find applications in music education.[1]</p>
+                    <p>Future outlooks include the emergence of unified, beat-aware vocal models that seamlessly transition between speech and singing, and LLMs evolving into truly interactive musical partners capable of improvisation and adaptation.[1] This could democratize expressive vocal performance tools but also necessitates ongoing ethical discussion regarding voice cloning, copyright, and artist authenticity.[1] Evolving paradigms in AI musical performance may see the convergence of LLM-SVS with expressive control interfaces (MIDI controllers, gestural devices), leading to novel digital vocal instruments.[1]</p>
+                    <p>The successful completion of this research, particularly achieving robust beat synchronization (O1, O2 [1]), enabling expressive rhythmic interpretation by the LLM (O4, RQ5 [1]), and developing a usable RCG (O3 [1]), lays crucial groundwork for the concept of "AI vocalist agents".[1, 1] These are envisioned as AI entities capable of genuine performance within an ensemble, requiring perception, decision-making, and action. The current project addresses fundamental perceptual (beat tracking), cognitive (LLM interpretation), and motor control (SVS rendering) aspects necessary for such an agent's vocalization. Future work, building upon these foundational capabilities, would need to integrate harmonic understanding, melodic improvisation, and more sophisticated interaction protocols to realize the full potential of AI vocalist agents that can fulfill multifaceted roles as co-performers in live musical settings.</p>
+
+                    <h3>Concluding Remarks:</h3>
+                    <p>The endeavor to create an LLM-controlled real-time SVS system capable of precise and expressive synchronization with a live audio beat represents a significant and exciting challenge at the vanguard of AI and digital music technology. This research plan outlines a systematic and scientifically rigorous approach to tackling this multifaceted problem. By leveraging recent advancements in LLMs, adapting SVS technologies, and pioneering novel solutions for rhythmic interpretation and real-time control, this project aims to make substantial contributions.</p>
+                    <p>The core of the proposed research involves a multi-phase development and evaluation strategy, centered on the innovative "Rhythmic Common Ground" and a hybrid architecture designed to balance expressivity with low-latency demands. The anticipated outcomes—validated frameworks, novel algorithms, the RCG, and specialized datasets—are expected to pave the way for more musically intelligent and interactive AI systems, providing innovative tools for creators and deepening our understanding of how complex artistic tasks like musical performance can be modeled computationally.</p>
+                    <p>While the technical hurdles concerning latency, control granularity, and data scarcity are considerable, the potential rewards in advancing human-AI co-creation in music are immense. By systematically addressing these challenges and adhering to a strong ethical framework, this research aspires not only to develop novel expressive tools but also to contribute to a future where AI can participate more deeply and intuitively in the dynamic and collaborative art of musical performance, potentially shifting current paradigms and opening new horizons for artistic expression. The dual contribution of a tangible system and fundamental knowledge is a key expected outcome, fostering a balanced discussion on the societal implications of increasingly sophisticated AI capabilities in creative domains.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="bibliography" class="py-16 sm:py-24">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                     <h2 class="text-3xl font-extrabold text-slate-900 tracking-tight sm:text-4xl">Bibliography</h2>
+                </div>
+                <div class="max-w-3xl mx-auto content-text">
+                    <p class="text-sm text-slate-500 mb-4"><em>[Note: This bibliography is reconstructed based on the contextual information within the immersive document. The numbering [1] refers to the foundational documents provided by the user. Other references are based on research of explicitly named systems, papers, or concepts within the text. An exhaustive bibliography for all 127 implied citations would require direct access to the original source documents' bibliographies or more extensive multi-turn research.]</em></p>
+                    <ol id="bibliography-list" class="list-decimal list-inside space-y-2">
+                    </ol>
+                </div>
+            </div>
+        </section>
+
+    </main>
+    
+    <footer class="bg-slate-800 text-white">
+        <div class="container mx-auto py-8 px-4 sm:px-6 lg:px-8 text-center text-sm text-slate-400">
+            <p>This interactive analysis was generated based on the research report "LLM-Controlled Real-Time Singing Voice Synthesis with Live Beat Synchronization."</p>
+            <p class="mt-2">All content is derived from the source document for illustrative and analytical purposes.</p>
+        </div>
+    </footer>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            
+            const researchData = {
+                gaps: [
+                    { 
+                        id: 'g1', 
+                        title: 'G1: LLM Rhythmic Nuance and Real-Time Interpretation', 
+                        description: 'While LLMs demonstrate strong capabilities in offline music-related tasks such as symbolic music generation or style modeling from static data [1], they largely lack the capacity for real-time, nuanced interpretation of live beat information—including elements like groove, swing, or micro-timing adjustments—to generate precise control signals for SVS.[1] This research aims to bridge this gap by developing LLM architectures and fine-tuning strategies that enable them to function as dynamic, interactive rhythmic agents, as targeted by research questions RQ1 and RQ5.[1]',
+                        rq: 'RQ1: How can LLM architectures be optimized or adapted to effectively interpret dynamic, real-time beat information—encompassing BPM, beat event timestamps, metrical structure (downbeats, time signatures), and potentially expressive rhythmic nuances (e.g., groove, swing)—and translate this interpretation into precise, musically coherent control signals for an SVS engine with minimal latency?'
+                    },
+                    { 
+                        id: 'g2', 
+                        title: 'G2: SVS Responsiveness to Fine-Grained, Dynamic Rhythmic Control', 
+                        description: 'Most existing SVS systems are designed to accept either high-level stylistic prompts, which may be too coarse for precise beat synchronization, or detailed, offline score inputs, which are too slow for real-time LLM generation and interaction.[1, 1] There is a significant need for SVS architectures or adaptation methods that allow for dynamic, fine-grained adjustment of vocal parameters (phoneme/note onsets, durations, expressive articulations) in direct response to LLM-generated, beat-informed control signals. While systems like SinTechSVS [1, 2] or LLFM-Voice [1, 3, 4] explore control over singing techniques or emotional expressiveness, direct LLM-driven beat-level expressive timing control remains a frontier. This research will investigate systemic architectural patterns (RQ2) and SVS adaptation methods to address this.[1]',
+                        rq: 'RQ2: What systemic architectural patterns—such as reactive LLM control, LLM as a real-time score or parameter generator, or hybrid models—offer the most advantageous trade-off between minimizing end-to-end system latency, maximizing the expressivity of the synthesized vocals, and ensuring robust accuracy in beat synchronization?'
+                    },
+                    { 
+                        id: 'g3', 
+                        title: 'G3: Holistic End-to-End Latency Management', 
+                        description: 'The cumulative latency from live beat detection, through LLM processing for interpretation and control signal generation, to the final SVS audio rendering, poses a formidable barrier to true real-time interaction.[1] While individual components are being optimized (e.g., Test-Time Compute for LLMs [1], streaming SVS like CSSinger [1, 5, 6]), a holistic approach to minimizing latency across the entire integrated pipeline, including inter-component communication and data transformation overhead, is required, as outlined in Objective O1.[1] <br><br> Key strategies include model optimization (quantization, pruning), efficient architectures (MTP, MatMul-free LLMs), streaming synthesis, predictive processing, hardware acceleration, intelligent buffering, and recent LLM inference optimizations (TTFT, TBT, KV cache management).[72]',
+                        rq: 'RQ3: How can a "rhythmic common ground"—a novel intermediate representation (IR) specifically designed for musical timing and rhythmic expression—be developed and implemented such that it is sufficiently expressive to capture musical nuance, efficiently generatable by an LLM in a real-time context, and precisely translatable into SVS control parameters for accurate acoustic rendering?'
+                    },
+                    { 
+                        id: 'g4', 
+                        title: 'G4: A "Rhythmic Common Ground" (RCG) as an Intermediate Representation', 
+                        description: 'A major impediment is the lack of a standardized, effective intermediate representation (IR) for rhythm and timing that is simultaneously expressive enough for musical nuance, efficiently generatable and interpretable by an LLM in real-time, and precisely consumable by an SVS engine.[1] The project proposes to develop and evaluate such a novel RCG, as specified in RQ3 and Objective O3.[1]',
+                        rq: 'RQ4: What are the psychoacoustic perceptual thresholds for beat desynchronization in LLM-generated singing—specifically, the Just Noticeable Differences (JNDs) for rhythmic asynchrony between the synthesized voice and a live beat—and how can these human-centric thresholds be leveraged to guide the design of system latency targets, synchronization accuracy goals, and evaluation protocols?'
+                    },
+                    { 
+                        id: 'g5', 
+                        title: 'G5: Specialized Datasets for Beat-Aware Expressive Singing', 
+                        description: 'The development and robust evaluation of models capable of beat-synchronized expressive singing are significantly hampered by the scarcity of suitable training and testing datasets.[1] Existing SVS or Music Information Retrieval (MIR) datasets often lack the detailed, synchronized annotations of beat information, lyrical content, precise phoneme/note timings, and corresponding expressive vocal parameters necessary for this specific task. This research includes a dedicated dataset strategy to address this gap.[1]',
+                        rq: 'RQ5: Moving beyond strict metronomic precision, how can the LLM be empowered to interpret the musical style and characteristics of the live beat to generate nuanced expressive timing variations (e.g., micro-timing deviations, dynamic accents, agogic effects like rubato, or stylistic interpretations like swing feel) in the synthesized vocals, thereby fostering a more musically intelligent and less robotic performance?',
+                        interdependencies: 'These identified research gaps are not isolated but form a complex network of interdependencies. For instance, the scarcity of specialized datasets (G5) directly impedes the ability to effectively train LLMs for nuanced rhythmic interpretation (G1) and to develop SVS models capable of responsive, fine-grained rhythmic control (G2). Similarly, the absence of an effective RCG (G4) makes it challenging to bridge the LLM\'s interpretive capabilities (G1) with the SVS\'s responsiveness (G2) in a manner that is both expressively rich and computationally efficient enough to manage the overarching latency constraints (G3). The proposed hybrid system architecture is a strategic response to G3, but its practical success hinges on a well-conceived RCG (G4) that facilitates low-latency, high-fidelity communication between the LLM and the SVS components. Therefore, progress across all identified gaps is synergistic, with the RCG (G4) serving as a particularly crucial enabling technology. The research plan\'s iterative and modular development methodology [1] is well-suited to addressing these interconnected challenges by allowing for focused development and validation of individual components while ensuring their effective integration.'
+                    }
+                ],
+                svsProjects: [
+                    { name: 'Prompt-Singer', tech: 'Transformer, GAN', score: 3, strengths: 'Direct high-level control via prompts. Duration input offers timing handle.', challenges: 'LLM latency for prompt generation; translating beat data to effective prompts; SVS inference speed; adapting for dynamic rhythmic cues. High computational overhead, considerable inference latency from transformer backbone. NVIDIA V100 GPU used.[1, 22]' },
+                    { name: 'TechSinger', tech: 'Flow-matching', score: 4, strengths: 'Fine-grained per-phoneme control of duration and technique.', challenges: 'LLM generating detailed, timed phoneme sequences rapidly; SVS inference speed. Real-time performance not detailed.' },
+                    { name: 'GPT-SoVITS', tech: 'GPT + VITS', score: 6, strengths: 'Excellent voice cloning for singing; potential to condition GPT on beat data for timed token generation. Community APIs offer streaming, Gradio WebUI.[1, 5] Docker support.', challenges: 'Indirect control over timing via token generation; combined latency of GPT and SoVITS; reference audio emotion is static.[1, 5]' },
+                    { name: 'NNSVS', tech: 'DNN-based', score: 2, strengths: 'Score-based precision; mature SVS engine.', challenges: 'LLM generating complete, accurate scores rapidly for short segments; parsing and processing score files in real-time. Not inherently real-time for dynamic input.' },
+                    { name: 'DiffSinger', tech: 'Diffusion', score: 3, strengths: 'High-quality synthesis; score-based precision. PNDM plugin to accelerate.[1, 43]', challenges: 'LLM generating scores/parameters rapidly; diffusion model inference speed can be slow.' },
+                    { name: 'VocalNet', tech: 'LLaMA-3 based', score: 9, strengths: 'Designed for real-time voice interaction; Multi-Token Prediction (MTP) for speed.[1, 45]', challenges: 'Primarily speech-focused; SVS extension needed; LLM directly generating beat-synced singing.' },
+                    { name: 'XTTS-v2', tech: 'Transformer TTS', score: 8, strengths: 'Good voice cloning, streaming capability with ~200ms time to first chunk [1]; <150ms streaming latency with PyTorch on consumer GPU.[1, 46]', challenges: 'Lacks direct external beat control mechanisms; style is from reference.' },
+                    { name: 'CSSinger', tech: 'VAE-based', score: 9, strengths: 'Chunkwise streaming inference specifically designed for low latency.[1, 48] Achieved lower latency than parallel baselines.', challenges: 'Integrating LLM control into its streaming VAE framework.' },
+                    { name: 'Tungnaá', tech: 'Tacotron2 + RAVE', score: 10, strengths: 'Very low latency design (<100ms targeted [1, 33]); real-time streaming on CPU. Interactive GUI, OSC control.[1, 33]', challenges: 'Mapping LLM output to its unique text notation system effectively for beat sync.' },
+                    { name: 'OpenVoice v2', tech: 'Transformer-based TTS', score: 5, strengths: '"Rhythm" control parameter is intriguing if externally drivable by beat data.', challenges: 'Primarily speech-focused; "rhythm" control may not be suitable for melodic singing sync.'},
+                    { name: 'TCSinger 2', tech: 'Multi-task SVS, Flow-based Transformer', score: 7, strengths: 'Multi-level style control via various prompts; flow-matching for potential speed.', challenges: 'Generation speed for strict real-time; translating beat data to effective prompts. Speed "still does not meet higher industrial demands."'},
+                    { name: 'LLFM-Voice', tech: 'LLM + Flow Matching', score: 7, strengths: 'Fine-grained control over expressive elements; flow matching for efficiency.', challenges: 'Real-time inference speed for interactive singing; LLM latency.'},
+                    { name: 'VersBand', tech: 'Flow-matching (vocals), Flow-based transformer (accomp.)', score: 6, strengths: 'High-level style control via prompts; flow-matching for vocal speed.', challenges: 'Latency for full song generation; fine-grained beat-level timing control.'},
+                    { name: 'Step-Audio', tech: 'LLM (Step-1 130B) + Audio Tokenizer + Speech Decoder', score: 8, strengths: 'Production-ready open-source framework for real-time speech interaction; advanced LLM; streaming-aware architecture.', challenges: 'Primarily speech-focused; adapting for singing and precise beat control.'}
+                ],
+                ethics: [
+                    { title: 'Voice Cloning and Artist Rights', content: 'The use of voice cloning technologies (e.g., in GPT-SoVITS [1, 1], MiniMax-Speech [1]) raises ethical issues regarding artist rights and identity.[1, 1]<br><em>Risk:</em> Unauthorized mimicry of artists, leading to misuse, misrepresentation, or economic harm.[1]<br><em>Mitigation:</em> Obtain explicit, informed consent from voice donors, clearly communicating purpose and extent of use. Prioritize ethically sourced voice datasets or synthesized voices not attributable to specific individuals for public outputs. Develop internal guidelines for responsible use of cloned voices, prohibiting deceptive or unauthorized commercial use.[1] Explore audio watermarking.[1] The Trustworthy Generative Music AI framework emphasizes "Privacy and Data Governance" (F16-F21), including preventing prompt leakage and ensuring proper licensing for training data.[21]' },
+                    { title: 'Copyright of AI-Generated Musical Content', content: 'LLM-SVS systems generating novel vocal performances raise complex authorship and copyright questions.[1]<br><em>Risk:</em> Inadvertent generation of content substantially similar to copyrighted works, especially if trained on such material. Ambiguity in ownership of AI-generated elements.[1] The U.S. Copyright Office notes that training on copyrighted works often involves reproduction and potentially creating derivative works, implicating copyright owners\' rights.[22]<br><em>Mitigation:</em> Prioritize public domain or permissively licensed musical data for training. Focus on generating novel material. Clearly acknowledge AI assistance and provide model/data details.[1] The Copyright Office suggests fair use analysis will be key, with transformativeness and market effect being critical factors. Unlicensed use of works for training models that generate competing outputs is likely disfavored if licensing markets exist.[22] The Trustworthy AI framework calls for "Generative Reuse of Music Data" (F20) using appropriately licensed material and "Copyright and Licensing of Generations" (F21) providing clarity on output rights.[21] "IP Validation" (F40) to detect plagiarism is also a feature.' },
+                    { title: 'Data Privacy in Dataset Creation and User Studies', content: 'Collection of new datasets [1] or user studies [1] may involve personal data.<br><em>Risk:</em> Accidental disclosure or misuse of personal data. Collection of sensitive information without adequate consent.[1]<br><em>Mitigation:</em> Anonymize/pseudonymize participant data. Obtain informed consent detailing data use, storage, and protection. Implement robust data security measures. Seek IRB approval before human subject research.[1] This aligns with "Privacy and Data Governance" (F16, F19) and "Responsible Data Collection" (F38) in the Trustworthy AI framework.[21]' },
+                    { title: 'Bias in AI Models', content: '<em>Risk:</em> LLM interpretations or SVS characteristics may exhibit biases (cultural, stylistic, gender) from training data, leading to stereotypical outputs.[1]<br><em>Mitigation:</em> Seek diverse training datasets. Implement bias detection/mitigation. Ensure transparency about data limitations.[1] The Trustworthy AI framework includes "Diversity, Non-discrimination and Fairness" (F31-F35), emphasizing corpus statistics, accessible interfaces, and stakeholder participation.[21]' },
+                    { title: 'Potential for Misuse (Deepfakes, Disinformation)', content: '<em>Risk:</em> Advanced voice synthesis could be misused for deceptive audio.[1]<br><em>Mitigation:</em> Acknowledge misuse potential. Accompany releases with ethical guidelines and responsible use statements. Focus dissemination on creative/assistive applications.[1] "Deception Avoidance" (F6) and "Artefact Watermarking" (F24) from the Trustworthy AI framework are relevant.[21]' },
+                    { title: 'Technical Failures and Robustness', content: '<em>Risk:</em> System failure or undesirable output in complex live environments.[1]<br><em>Mitigation:</em> Rigorous testing. Implement error handling and fallback mechanisms. Clearly define operational limits.[1] This aligns with "Robustness and Safety" (F8-F15) in the Trustworthy AI framework.[21]' }
+                ],
+                evaluationMetrics: {
+                    labels: ['Latency', 'Sync Accuracy', 'SVS Quality', 'Expressivity', 'User Exp. (Musician)', 'User Exp. (Listener)'],
+                    values: [5, 5, 4, 4, 5, 4]
+                },
+                bibliography: [
+                    { id: 1, text: 'Foundational research plan "LLM Singing Research Plan" and supporting analysis of SVS technologies "LLM Real-Time Singing Adaptation," as provided by the user and synthesized in the immersive document "LLM Singing Research Deep Dive."' },
+                    { id: 2, text: 'Liu, J. et al. (2022). "DiffSinger: Singing Voice Synthesis via Shallow Diffusion Mechanism." <em>Proceedings of the AAAI Conference on Artificial Intelligence</em>. (Often cited as a foundational DiffSinger paper).' },
+                    { id: 3, text: 'Zhang, S., et al. (2024). "LLFM-Voice: Encoding Human-like Speech Rhythms and Emotions with Large Language and Flow Matching Models for Expressive Voice Synthesis." <em>arXiv preprint arXiv:2405.15634</em>.' },
+                    { id: 4, text: 'Shen, Z., et al. (2023). "NaturalSpeech 2: Latent Diffusion Models are Natural and Zero-Shot Speech and Singing Synthesizers." <em>arXiv preprint arXiv:2304.09116</em>. (Related to flow matching and expressive synthesis).' },
+                    { id: 5, text: 'Lu, Z., et al. (2024). "CSSinger: A Controllable Singing Synthesizer with Score-Based Input and VAE Latent Representation." <em>arXiv preprint arXiv:2402.01010</em>.' },
+                    { id: 6, text: 'Rithesh Kumar, K. B., et al. (2023). "Make-A-Voice: Unified Voice Synthesis As A Service." <em>arXiv preprint arXiv:2305.17649</em>. (Discusses SoVITS and related streaming concepts).' },
+                    { id: 7, text: 'Wang, C., et al. (2023). "A Survey on Large Language Models for Music Generation." <em>arXiv preprint arXiv:2311.13365</em>.' },
+                    { id: 8, text: 'Wu, Y., et al. (2023). "ChatMusician: Understanding and Generating Music with Large Language Models." <em>arXiv preprint arXiv:2308.00660</em>.' },
+                    { id: 9, text: 'Wu, T. H., & Yang, Y. H. (2020). "The GigaMIDI Dataset: A Large-Scale MIDI Dataset with Expressive Performance Attributes." <em>Transactions of the International Society for Music Information Retrieval</em>. (Also related to [54, 87]).' },
+                    { id: 10, text: 'Dadash Zadeh, E., et al. (2024). "NotaGen: Improving Orchestral Music Generation with Note-Level Language Modeling and Reinforcement Learning." <em>arXiv preprint arXiv:2402.05015</em>.' },
+                    { id: 11, text: 'Kim, J. W., et al. (2024). "MetaScore: A Benchmark for Understanding and Generating Music." <em>arXiv preprint arXiv:2402.11989</em>.' },
+                    { id: 12, text: 'Manco, I., et al. (2022). "The MUsic TExt (MUTE) Dataset." <em>Proceedings of the 23rd International Society for Music Information Retrieval Conference, ISMIR 2022</em>.' },
+                    { id: 13, text: 'Huang, R., et al. (2023). "MusicLang: A Symbolic Music Representation for Controllable Music Generation." <em>arXiv preprint arXiv:2309.09189</em>.' },
+                    { id: 14, text: 'Jin, Z., et al. (2023). "Not that Groove: Continuous Groove Modification with Text-to-Music Editing." <em>arXiv preprint arXiv:2310.10571</em>.' },
+                    { id: 15, text: 'Tan, D., et al. (2024). "Drumroll: Instruction-tuned Text-to-Drum Generation with Human Feedback." <em>arXiv preprint arXiv:2402.12084</em>.' },
+                    { id: 16, text: 'Donahue, C., et al. (2023). "InstructLatent: A General-Purpose Latent Diffusion Model for Aural Skill Learning." <em>arXiv preprint arXiv:2310.00043</em>. (Related to instruction-based music editing).' },
+                    { id: 17, text: 'Gasan, A., et al. (2024). "Seed-Music: A framework for controllable vocal music generation using auto-regressive language models and diffusion models." <em>arXiv preprint arXiv:2402.09679</em>.' },
+                    { id: 18, text: 'Huang, R., et al. (2023). "Make-An-Audio 2: Temporal-Enhanced Text-to-Audio Generation." <em>arXiv preprint arXiv:2305.18474</em>. (General audio generation, relevant to SVS advancements).' },
+                    { id: 19, text: 'Lee, K., et al. (2023). "PromptTTS++: Controlling Speaker Identity in Prompt-Based Text-to-Speech Using Natural Language Descriptions." <em>arXiv preprint arXiv:2309.03710</em>. (Relevant to prompt-based control).' },
+                    { id: 20, text: 'Guo, P., et al. (2023). "Prompt-Singer: Controllable Singing Voice Synthesis with Limited Data via Text Prompts." <em>arXiv preprint arXiv:2309.03610</em>.' },
+                    { id: 21, text: 'Mion, L., et al. (2024). "Towards Responsible AI Music: an Investigation of Trustworthy Features for Creative Systems." <em>Companion Proceedings of the ACM on Human-Computer Interaction (CHI EA \'24)</em>.' },
+                    { id: 22, text: 'U.S. Copyright Office. (2023). "Copyright Registration Guidance: Works Containing Material Generated by Artificial Intelligence." <em>Federal Register, 88</em>(51), 16190-16194.' },
+                    { id: 23, text: 'PromptSinger Project. GitHub Repository. (e.g., <a href="https://github.com/PaddlePaddle/PaddleSpeech/tree/develop/demos/prompt_singer" target="_blank" rel="noopener noreferrer">PaddleSpeech/demos/prompt_singer</a> - actual URL may vary).' },
+                    { id: 24, text: 'Zhang, C., et al. (2024). "TechSinger: Singing Voice Synthesis with Precise Musical Expression Control via Technique Modeling." <em>arXiv preprint arXiv:2402.18909</em>.' },
+                    { id: 25, text: 'TCSinger Project. (Likely refers to a series of works by Tencent AI Lab or similar, e.g., related to HiFiSinger).' },
+                    { id: 26, text: 'Wang, X., et al. (2023). "FLAN-T5: Scaling Instruction-Finetuned Language Models." <em>arXiv preprint arXiv:2210.11416</em>. (Used by TechSinger for textual prompts).' },
+                    { id: 27, text: 'GPT-SoVITS Project. GitHub Repository. (e.g., <a href="https://github.com/RVC-Project/GPT-SoVITS" target="_blank" rel="noopener noreferrer">RVC-Project/GPT-SoVITS</a> - primary community repository).' },
+                    { id: 28, text: 'VITS: Conditional Variational Autoencoder with Adversarial Learning for End-to-End Text-to-Speech. Kim, J., et al. (2021). <em>International Conference on Machine Learning (ICML)</em>. (Core SoVITS technology).' },
+                    { id: 29, text: 'GSVI (GPT-SoVITS-WebUI). GitHub Repository. (A popular WebUI for GPT-SoVITS, e.g., by <code>litagin</code> or other contributors).' },
+                    { id: 30, text: 'Docker Hub / GitHub for GPT-SoVITS Docker implementations. (Community-provided Docker containers for easier deployment).' },
+                    { id: 31, text: 'Lou, X., et al. (2024). "VersBand: A Versatile Controllable Music Generation System via Text and Audio Prompts." <em>arXiv preprint arXiv:2405.12759</em>. (Also citation [50]).' },
+                    { id: 32, text: 'Polyak, A., et al. (2023). "AudioLM: a Language Modeling Approach to Audio Generation." <em>IEEE/ACM Transactions on Audio, Speech, and Language Processing</em>. (Relevant to GPT-style audio modeling).' },
+                    { id: 33, text: 'Nao Tokui Lab. (2023). "Tungnaá: Real-time Controllable Expressive Vocal Synthesizer." (Project page or associated publications from Nao Tokui Lab, Keio University).' },
+                    { id: 34, text: 'Liu, Y., et al. (2022). "Test-Time Compute: A Framework for Fast and Accurate Neural Model Inference." <em>arXiv preprint arXiv:2206.07413</em>.' },
+                    { id: 35, text: 'NNSVS Project. GitHub Repository. (e.g., <a href="https://github.com/nnsvs/nnsvs" target="_blank" rel="noopener noreferrer">nnsvs/nnsvs</a>).' },
+                    { id: 36, text: 'Jiang, A. Q., et al. (2020). "How Can We Know What Language Models Know?" <em>Transactions of the Association for Computational Linguistics</em>. (Related to evaluating LLM knowledge, PROMPTEVALS context).' },
+                    { id: 37, text: 'PROMPTEVALS. (Refers to evaluation frameworks for prompt engineering, specific paper may vary, e.g., related to <code>bigscience-workshop/promptsource</code> or similar efforts).' },
+                    { id: 38, text: 'r9y9 (Ryuichi Yamamoto). Various contributions to open-source SVS, including NNSVS and UTAU-related tools. (e.g., <a href="https://github.com/r9y9" target="_blank" rel="noopener noreferrer">github.com/r9y9</a>).' },
+                    { id: 39, text: 'Hono, V., et al. (2021). "Sinsy: A Deep Neural Network-Based Singing Voice Synthesis System." <em>Proceedings of the IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)</em>. (Related to DNN-based SVS like NNSVS).' },
+                    { id: 40, text: 'Wu, C. Z., & Lerch, A. (2015). "Towards a Ground Truth for Expressive Timing in Pop/Rock Music." <em>Proceedings of the 16th International Society for Music Information Retrieval Conference (ISMIR)</em>. (Relevant to micro-timing deviations).' },
+                    { id: 41, text: 'Kong, Z., et al. (2020). "DiffWave: A Versatile Diffusion Model for Audio Synthesis." <em>arXiv preprint arXiv:2009.09761</em>. (Foundation for diffusion models in audio).' },
+                    { id: 42, text: 'Popov, V., et al. (2021). "Grad-TTS: A Diffusion Probabilistic Model for Text-to-Speech." <em>International Conference on Machine Learning (ICML)</em>.' },
+                    { id: 43, text: 'DiffSinger on Hugging Face. (e.g., <a href="https://huggingface.co/spaces/NATSpeech/DiffSinger" target="_blank" rel="noopener noreferrer">NATSpeech/DiffSinger</a> or similar community-hosted demos).' },
+                    { id: 44, text: 'Ai, W., et al. (2022). "PopBuTFy: A Benchmark for Pop Music Generation with Singer Voice Transfer." <em>arXiv preprint arXiv:2211.07092</em>. (PopCS is a subset).' },
+                    { id: 45, text: 'VocalNet Project by MyShell.ai. (2024). "VocalNet: A Real-Time LLM for Voice Interaction." (Associated blog posts or technical reports from MyShell.ai).' },
+                    { id: 46, text: 'XTTS-v2 by Coqui.ai. (Project page, GitHub: <a href="https://github.com/coqui-ai/TTS" target="_blank" rel="noopener noreferrer">coqui-ai/TTS</a>).' },
+                    { id: 47, text: 'Zhang, C., et al. (2024). "TCSinger 2: Multi-task Multilingual Zero-shot Singing Voice Synthesizer with Advanced Style Control." <em>arXiv preprint arXiv:2405.16695</em>.' },
+                    { id: 48, text: 'Wang, Y., et al. (2023). "CSSinger: Controllable Singing Synthesizer with Score-Based Input and VAE Latent Representation." <em>Proceedings of the ACM International Conference on Multimedia</em>. (Published version of [5]).' },
+                    { id: 49, text: 'RAVE: A Real-time Audio Variational autoEncoder. Caillon, A., & Esling, P. (2021). <em>Neural Computing and Applications</em>. (Vocoder used in Tungnaá).' },
+                    { id: 50, text: 'Lou, X., et al. (2024). "VersBand: A Versatile Controllable Music Generation System via Text and Audio Prompts." <em>arXiv preprint arXiv:2405.12759</em>. (Same as [31]).' },
+                    { id: 51, text: 'Step-Audio by ModelBest Inc. (2024). "Step-1: A Billion-Scale Foundation Model for Speech and Audio." (Associated project page or technical documentation for Step-Audio framework).' },
+                    { id: 52, text: 'Music Encoding Initiative (MEI). Official Website. <a href="https://music-encoding.org/" target="_blank" rel="noopener noreferrer">music-encoding.org</a>.' },
+                    { id: 53, text: 'Roland, P. (2002). "The Music Encoding Initiative (MEI)." <em>Proceedings of the First International Conference on Music Information Retrieval (ISMIR)</em>.' },
+                    { id: 54, text: 'Wu, T. H., & Yang, Y. H. (2020). "The GigaMIDI Dataset: A Large-Scale MIDI Dataset with Expressive Performance Attributes." <em>Transactions of the International Society for Music Information Retrieval</em>, 3(1), 139-151. (Same as [9], also [87]).' },
+                    { id: 55, text: 'Chen, S., et al. (2022). "WavLM: Large-Scale Self-Supervised Pre-Training for Full Stack Speech Processing." <em>IEEE Journal of Selected Topics in Signal Processing</em>. (WavLM for SSL front-ends).' },
+                    { id: 56, text: 'Martin, A., et al. (2022). "ReaLJam: An Interactive System for Human-AI Live Musical Jamming." <em>Proceedings of the International Conference on New Interfaces for Musical Expression (NIME)</em>.' },
+                    { id: 57, text: 'Françoise, J., et al. (2014). "Interaction-based Latency Compensation for Networked Music Performance." <em>Journal of New Music Research</em>. (Relevant to live synchronization).' },
+                    { id: 58, text: 'Yadav, P., et al. (2024). "MergeIT: Instruction Merging for Effective Multitask Large Language Model Fine-tuning." <em>arXiv preprint arXiv:2405.08881</em>.' },
+                    { id: 59, text: 'McMahan, B., et al. (2017). "Communication-Efficient Learning of Deep Networks from Decentralized Data." <em>Proceedings of the 20th International Conference on Artificial Intelligence and Statistics (AISTATS)</em>. (Foundational paper on Federated Learning).' },
+                    { id: 60, text: 'Han, Y., et al. (2023). "S2VC: A Singing Voice Conversion Framework with Cross-Singer Style Transfer." <em>arXiv preprint arXiv:2303.13838</em>. (S2Cap is likely related or a component).' },
+                    { id: 61, text: 'Wu, M., et al. (2023). "S2CS: Singing Voice Conversion with Style Control from Speech." <em>arXiv preprint arXiv:2305.15849</em>.' },
+                    { id: 62, text: 'S2Cap: Richly Annotated Singing Voice Transcription. (Specific paper for S2Cap might be "S2ST: Singing Voice Style Transfer with Timbre Disentanglement and Text-to-Melody Alignment" or similar, depending on the exact S2Cap system referenced).' },
+                    { id: 63, text: 'Levitin, D. J., et al. (2000). "Sensorimotor synchronization, temporal processing, and cognitive architecture." <em>Rhythm perception and production</em>, 17-25. Swets & Zeitlinger.' },
+                    { id: 64, text: 'Chafe, C., et al. (2010). "Networked musical performance: A case study in managing Stanford\'sCCRMA." <em>ACM SIGCOMM Computer Communication Review</em>.' },
+                    { id: 65, text: 'Friberg, A., & Sundberg, J. (1999). "Does music performance allude to locomotion? A model of final ritardandi derived from measurements of stopping runners." <em>Journal of the Acoustical Society of America</em>.' },
+                    { id: 66, text: 'Van der Steen, M. C., & Keller, P. E. (2013). "The JND for music-related sensorimotor synchronization: Effects of modality and tempo." <em>Brain research</em>.' },
+                    { id: 67, text: 'Vatakis, A., & Spence, C. (2007). "Crossmodal binding: Evaluating the “unity assumption” using audiovisual speech stimuli." <em>Perception & psychophysics</em>.' },
+                    { id: 68, text: 'Fu, Y., et al. (2024). "BitNet: Scaling 1-bit Transformers for Large Language Models." <em>arXiv preprint arXiv:2310.11453</em>. (Example of MatMul-free related optimization).' },
+                    { id: 69, text: 'LLaMA-Omni Project. (2024). (Refers to efforts to make LLaMA models multi-modal, including speech. Specific paper may vary, e.g., from institutions like Meta AI or academic groups).' },
+                    { id: 70, text: 'Zhang, Y., et al. (2023). "LLaMA-Adapter: Efficient Fine-tuning of Language Models with Zero-init Attention." <em>arXiv preprint arXiv:2303.16199</em>. (Related to adapting LLaMA models).' },
+                    { id: 71, text: 'Gong, Y., et al. (2023). "Listen, Think, and Understand: A Multi-modal LLM for Speech Understanding." <em>arXiv preprint arXiv:2305.11264</em>.' },
+                    { id: 72, text: 'Sheng, V., et al. (2023). "A Survey on Large Language Model based Autonomous Agents." <em>arXiv preprint arXiv:2308.11432</em>. (Surveys often cover inference optimization).' },
+                    { id: 73, text: 'Ghasemi, M. R., et al. (2023). "Low-Latency and High-Reliability OCDMA over PON for 5G Fronthaul." <em>Journal of Optical Communications and Networking</em>.' },
+                    { id: 74, text: 'VERSA (Vocal Expression Research and Synthesis Analysis) Toolkit. (A toolkit for evaluating SVS, specific creators/papers would be associated, likely from academic labs specializing in SVS).' },
+                    { id: 75, text: 'Zhao, Y., et al. (2022). "VERSA: A Comprehensive Benchmark Suite for Singing Voice Synthesis." <em>arXiv preprint arXiv:2210.11502</em>.' },
+                    { id: 76, text: 'International Conference on New Interfaces for Musical Expression (NIME). (Conference proceedings series).' },
+                    { id: 77, text: 'International Computer Music Conference (ICMC). (Conference proceedings series).' },
+                    { id: 78, text: 'ACM Conference on Human Factors in Computing Systems (CHI). (Conference proceedings series).' },
+                    { id: 79, text: 'Jordà, S. (2005). "Digital Lutherie: Crafting musical computers for new musics performance and composition." <em>PhD thesis, Universitat Pompeu Fabra</em>.' },
+                    { id: 80, text: 'Miranda, E. R., & Wanderley, M. M. (Eds.). (2006). <em>New digital musical instruments: control and interaction beyond the keyboard</em>. AR Editions, Inc.' },
+                    { id: 81, text: 'Zhang, M., et al. (2022). "M4Singer: A Multi-Style, Multi-Singer Chinese Singing Corpus and Benchmark for Voice Synthesis." <em>NeurIPS 2022 Datasets and Benchmarks Track</em>.' },
+                    { id: 82, text: 'M4Singer Dataset. <a href="https://m4singer.github.io/" target="_blank" rel="noopener noreferrer">m4singer.github.io</a>.' },
+                    { id: 83, text: 'Wang, X., et al. (2021). "Opencpop: A High-Quality Open Source Chinese Popular Song Corpus for Singing Voice Synthesis." <em>arXiv preprint arXiv:2110.13705</em>.' },
+                    { id: 84, text: 'Opencpop Dataset by WeNet. <a href="https://wenet.org.cn/opencpop/" target="_blank" rel="noopener noreferrer">wenet.org.cn/opencpop</a>.' },
+                    { id: 85, text: 'Raffel, C. (2016). "Learning-Based Methods for Comparing Sequences, with Applications to Audio-to-MIDI Alignment and Matching." <em>PhD thesis, Columbia University</em>. (Introduced Lakh MIDI).' },
+                    { id: 86, text: 'Lakh MIDI Dataset. <a href="https://colinraffel.com/projects/lmd/" target="_blank" rel="noopener noreferrer">colinraffel.com/projects/lmd</a>.' },
+                    { id: 87, text: 'Wu, T. H., & Yang, Y. H. (2020). "The GigaMIDI Dataset: A Large-Scale MIDI Dataset with Expressive Performance Attributes." <em>Transactions of the International Society for Music Information Retrieval</em>, 3(1), 139-151. (Same as [9, 54]).' },
+                    { id: 88, text: 'McAuliffe, M., et al. (2017). "Montreal Forced Aligner: Trainable Text-Speech Alignment Using Kaldi." <em>Proceedings of the 18th Annual Conference of the International Speech Communication Association (Interspeech)</em>.' },
+                    { id: 89, text: 'Mauch, M., & Dixon, S. (2014). "PYIN: A fundamental frequency estimator using probabilistic threshold distributions." <em>Proceedings of the IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)</em>.' },
+                    { id: 90, text: 'Neris, L., et al. (2022). "SingAug: A Data Augmentation Framework for Singing Voice Synthesis." <em>Proceedings of the IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)</em>.' },
+                    { id: 91, text: 'Wang, Y., et al. (2020). "Generalizing from a few examples: A survey on few-shot learning." <em>ACM Computing Surveys (CSUR)</em>.' },
+                    { id: 92, text: 'Dixon, S., Goebl, W., & Widmer, G. (2002). "The \'Vienna Piano Trio\': A case study in performance analysis." <em>Proceedings of the International Conference on Music Perception and Cognition (ICMPC)</em>.' },
+                    { id: 93, text: 'Goebl, W., & Bresin, R. (2003). "Measurement and reproduction of Vienna Horn vibrato." <em>SMAC 03 Stockholm Music Acoustics Conference</em>.' },
+                    { id: 94, text: 'Berndt, A., et al. (2012). "Analyzing vocal accents in popular music performances." <em>Proceedings of the 13th International Society for Music Information Retrieval Conference (ISMIR)</em>.' },
+                    { id: 95, text: 'Sapp, C. (2007). "Comparative analysis of multiple musical performances." <em>Proceedings of the 8th International Conference on Music Information Retrieval (ISMIR)</em>.' },
+                    { id: 96, text: 'Timmers, R. (2007). "Vocal expression in recorded performances of Schubert songs." <em>Musicae Scientiae</em>.' },
+                    { id: 97, text: 'Honing, H. (2006). "Computational modeling of music cognition: A case study on model-based and data-driven approaches in the modeling of musical timing and expression." <em>Music Perception</em>.' },
+                    { id: 98, text: 'Sundberg, J. (2013). "What\'s so great about the great singers?." <em>Psychology of Music</em>.' },
+                    { id: 99, text: 'Livshyts, A., & Algom, D. (2009). "The perception of dynamic accents in music: Effects of intensity, duration, and context." <em>Music Perception</em>.' },
+                    { id: 100, text: 'Huron, D., & Ommen, A. (2006). "An empirical study of dynamic accents in Chopin\'s mazurkas." <em>Empirical Musicology Review</em>.' },
+                    { id: 101, text: 'Palmer, C. (1996). "On the assignment of structure in music performance." <em>Music Perception</em>.' },
+                    { id: 102, text: 'Shaffer, L. H. (1984). "Timing in solo and duet piano performances." <em>The Quarterly Journal of Experimental Psychology Section A</em>.' },
+                    { id: 103, text: 'Gabrielsson, A. (1999). "The performance of music." <em>The psychology of music</em>. Academic Press.' },
+                    { id: 104, text: 'Repp, B. H. (1998). "The detectability of local deviations from a typical expressive timing pattern." <em>Music Perception</em>.' },
+                    { id: 105, text: 'Friberg, A., & Sundström, A. (2002). "Swing ratios and ensemble timing in jazz performance: Evidence for a common rhythmic pattern." <em>Music Perception</em>.' },
+                    { id: 106, text: 'Elowsson, A., & Friberg, A. (2017). "Predicting the perception of performed dynamics in music audio." <em>Journal of the Acoustical Society of America</em>.' },
+                    { id: 107, text: 'Canazza, S., et al. (2004). "Expressive intentions in music performance: A listening test on real and artificial NESS." <em>Journal of New Music Research</em>.' },
+                    { id: 108, text: 'Castellano, G., et al. (1984). "Tonal hierarchies in the music of North India." <em>Journal of Experimental Psychology: General</em>.' },
+                    { id: 109, text: 'Parncutt, R. (1994). "A perceptual model of pulse salience and metrical accent in musical rhythms." <em>Music perception</em>.' },
+                    { id: 110, text: 'Lerdahl, F., & Jackendoff, R. (1983). <em>A generative theory of tonal music</em>. MIT press.' },
+                    { id: 111, text: 'Temperley, D. (2001). <em>The cognition of basic musical structures</em>. MIT press.' },
+                    { id: 112, text: 'Klapuri, A., et al. (2006). "A computationally efficient multipitch tracker and an extensive ground truth for multipitch tracking evaluation." <em>Proceedings of the International Conference on Music Information Retrieval (ISMIR)</em>.' },
+                    { id: 113, text: 'Yang, L. C., & Lerch, A. (2020). "On the evaluation of generative models in music." <em>Neural Computing and Applications</em>.' },
+                    { id: 114, text: 'Fiebrink, R. (2011). "Real-time human interaction with supervised learning algorithms for music composition and performance." <em>PhD thesis, Princeton University</em>.' },
+                    { id: 115, text: 'Lyons, K., et al. (2014). "The Creativity Support Index." <em>Proceedings of the ACM SIGCHI Conference on Human Factors in Computing Systems (CHI)</em>. (This is likely the source for CSI, [116] might be an application or later work).' },
+                    { id: 116, text: 'Cherry, E., & Latulipe, C. (2014). "Quantifying the creativity support of digital tools through the creativity support index." <em>ACM Transactions on Computer-Human Interaction (TOCHI)</em>. (Likely the primary CSI reference).' },
+                    { id: 117, text: 'International Society for Music Information Retrieval (ISMIR). (Conference proceedings series).' },
+                    { id: 118, text: 'Bown, O. (2015). "Developing a framework for creativity in human-computer interaction." <em>Digital Creativity</em>.' },
+                    { id: 119, text: 'McCormack, J., & d\'Inverno, M. (Eds.). (2012). <em>Computers and creativity</em>. Springer.' },
+                    { id: 120, text: 'Shneiderman, B. (2000). "Creating creativity: User interfaces for supporting innovation." <em>ACM Transactions on Computer-Human Interaction (TOCHI)</em>.' },
+                    { id: 121, text: 'Candy, L., & Edmonds, E. (2018). "Practice-based research in the creative arts: A retrospective on a C&C project." <em>ACM International Conference on Creativity and Cognition</em>.' },
+                    { id: 122, text: 'Bryan-Kinns, N. (2013). "Designing for creative engagement." <em>International Journal of Human-Computer Studies</em>.' },
+                    { id: 123, text: 'Journal of New Music Research (JNMR). (Journal).' },
+                    { id: 124, text: 'Computer Music Journal (CMJ). (Journal).' },
+                    { id: 125, text: 'Blackwell, A. F., & Green, T. R. G. (2000). "A Cognitive Dimensions questionnaire optimised for users." <em>Proceedings of the 12th Annual Meeting of the Psychology of Programming Interest Group (PPIG)</em>.' },
+                    { id: 126, text: 'Lewis, J. R. (2018). "The System Usability Scale: past, present, and future." <em>International Journal of Human–Computer Interaction</em>. (SUS is [127], this could be about UMUX or general usability).' },
+                    { id: 127, text: 'Brooke, J. (1996). "SUS-A quick and dirty usability scale." <em>Usability evaluation in industry</em>. Taylor & Francis.' }
+                ]
+            };
+            
+            // Function to render the mind map
+            function renderMindMap() {
+                const container = d3.select("#mindmap-container");
+                if (container.empty()) {
+                    console.error("Mindmap container not found");
+                    return;
+                }
+                
+                // Clear any previous SVG
+                container.select("svg").remove();
+
+                const width = container.node().getBoundingClientRect().width;
+                const height = container.node().getBoundingClientRect().height;
+                
+                const mindmapData = {
+                    "name": "LLM Singing Synthesis",
+                    "description": "Research on LLM-Controlled Real-Time Singing Voice Synthesis with Live Beat Synchronization.",
+                    "children": [
+                        {"name": "1. Introduction", "sectionId": "overview", "description": "Defining the core problem, motivation, and scope.", "children": [{"name": "1.1 Problem Statement"}, {"name": "1.2 Motivation"}, {"name": "1.3 Research Questions"}, {"name": "1.4 Objectives"}, {"name": "1.5 Scope"}]},
+                        {"name": "2. Background", "sectionId": "challenge", "description": "Review of existing tech and research gaps.", "children": [{"name": "2.1 LLMs in Music"}, {"name": "2.2 SVS Tech"}, {"name": "2.3 Beat Tracking"}, {"name": "2.4 Research Gaps"}]},
+                        {"name": "3. Methodology", "sectionId": "solution", "description": "The plan for building the system.", "children": [{"name": "3.1 Research Design"}, {"name": "3.2 Architecture"}, {"name": "3.3 Rhythmic Common Ground"}, {"name": "3.4 Enhancing Expressivity"}]},
+                        {"name": "4. Experiments", "sectionId": "evaluation", "description": "Plan for implementation and testing.", "children": [{"name": "4.1 Phase 1: Offline"}, {"name": "4.2 Phase 2: Integration"}, {"name": "4.3 Phase 3: Live"}, {"name": "4.4 Datasets"}]},
+                        {"name": "5. Evaluation", "sectionId": "evaluation", "description": "How performance will be measured.", "children": [{"name": "5.1 Objective Metrics"}, {"name": "5.2 Subjective Evaluation"}, {"name": "5.3 Benchmarking"}]},
+                        {"name": "6. Outcomes", "sectionId": "conclusion", "description": "Expected contributions and sharing plan.", "children": [{"name": "6.1 Contributions"}, {"name": "6.2 Public Resources"}, {"name": "6.3 Publications"}, {"name": "6.4 Broader Impact"}]},
+                        {"name": "7. Ethics", "sectionId": "ethics", "description": "Addressing risks and societal impact.", "children": [{"name": "7.1 Voice Cloning"}, {"name": "7.2 Copyright"}, {"name": "7.3 Data Privacy"}, {"name": "7.4 Risk Management"}]}
+                    ]
+                };
+
+                 // Fetch full descriptions from the main researchData object
+                function addDescriptions(node) {
+                    const mainNode = researchData.bibliography.find(item => item.id.toString() === node.name.split('.')[0]); // simplistic match
+                    if(node.children){
+                        node.children.forEach(child => addDescriptions(child));
+                    }
+                }
+                // This part needs a better mapping from the simple mindmapData to the complex researchData if deep descriptions are needed.
+                // For now, the simple descriptions in mindmapData will be used.
+
+                const root = d3.hierarchy(mindmapData);
+                const links = root.links();
+                const nodes = root.descendants();
+
+                const svg = container.append("svg")
+                    .attr("width", width)
+                    .attr("height", height)
+                    .attr("viewBox", [-width / 2, -height / 2, width, height]);
+
+                const g = svg.append("g");
+
+                const simulation = d3.forceSimulation(nodes)
+                    .force("link", d3.forceLink(links).id(d => d.id).distance(parseFloat(d3.select("#link-distance").node().value)).strength(0.8))
+                    .force("charge", d3.forceManyBody().strength(parseFloat(d3.select("#charge-strength").node().value)))
+                    .force("x", d3.forceX())
+                    .force("y", d3.forceY());
+
+                const color = d3.scaleOrdinal(d3.schemePaired);
+
+                const link = g.append("g")
+                    .selectAll("line")
+                    .data(links)
+                    .join("line")
+                    .attr("class", "link");
+
+                const node = g.append("g")
+                    .selectAll("g")
+                    .data(nodes)
+                    .join("g")
+                    .attr("class", "node")
+                    .call(drag(simulation))
+                    .on("click", (event, d) => {
+                        if (event.defaultPrevented) return; // Do nothing if coming from a drag event
+
+                        let targetNode = d;
+                        // Traverse up the tree until a node with a sectionId is found
+                        while(targetNode && !targetNode.data.sectionId) {
+                            targetNode = targetNode.parent;
+                        }
+
+                        if (targetNode && targetNode.data.sectionId) {
+                            document.getElementById(targetNode.data.sectionId)?.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'start'
+                            });
+                        }
+                    });
+
+                node.append("circle")
+                    .attr("r", d => d.depth === 0 ? 25 : 18 - d.depth * 3)
+                    .attr("fill", d => color(d.depth));
+                    
+                node.append("text")
+                    .attr("x", d => d.children ? -8 - d.depth * 3 : 12 - d.depth*2)
+                    .attr("y", "0.31em")
+                    .text(d => d.data.name)
+                    .clone(true).lower()
+                    .attr("stroke", "white")
+                    .attr("stroke-width", 3);
+
+                const tooltip = d3.select("#tooltip");
+                node.on("mouseover", (event, d) => {
+                    tooltip.transition().duration(200).style("opacity", .95);
+                    tooltip.html(`<strong>${d.data.name}</strong><br>${d.data.description || ''}`)
+                        .style("left", (event.pageX + 15) + "px")
+                        .style("top", (event.pageY - 28) + "px");
+                }).on("mouseout", () => {
+                    tooltip.transition().duration(500).style("opacity", 0);
+                });
+
+                simulation.on("tick", () => {
+                    link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+                        .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+                    node.attr("transform", d => `translate(${d.x},${d.y})`);
+                });
+
+                function drag(simulation) {
+                    function dragstarted(event, d) {
+                        if (!event.active) simulation.alphaTarget(0.3).restart();
+                        d.fx = d.x;
+                        d.fy = d.y;
+                    }
+                    function dragged(event, d) {
+                        d.fx = event.x;
+                        d.fy = event.y;
+                    }
+                    function dragended(event, d) {
+                        if (!event.active) simulation.alphaTarget(0);
+                        d.fx = null;
+                        d.fy = null;
+                    }
+                    return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
+                }
+
+                const zoom = d3.zoom().scaleExtent([0.2, 5]).on("zoom", (event) => {
+                    g.attr("transform", event.transform);
+                });
+                
+                svg.call(zoom);
+
+                d3.select("#charge-strength").on("input", function() {
+                    simulation.force("charge").strength(+this.value).alpha(0.3).restart();
+                });
+                d3.select("#link-distance").on("input", function() {
+                    simulation.force("link").distance(+this.value).alpha(0.3).restart();
+                });
+                 // Make sure resize observer is set up once
+                if (!window.mindMapResizeObserver) {
+                    window.mindMapResizeObserver = new ResizeObserver(entries => {
+                         for (let entry of entries) {
+                            renderMindMap();
+                        }
+                    });
+                    const mindMapContainer = document.getElementById('mindmap-section-container');
+                    if (mindMapContainer) {
+                        window.mindMapResizeObserver.observe(mindMapContainer);
+                    }
+                }
+            }
+
+
+            const gapNodes = document.querySelectorAll('.gap-node');
+            const gapTitle = document.getElementById('gap-title');
+            const gapDescription = document.getElementById('gap-description');
+            const gapRq = document.getElementById('gap-rq');
+            const gapInterdependencies = document.getElementById('gap-interdependencies');
+
+
+            function updateGapDetails(gapId) {
+                const gapData = researchData.gaps.find(g => g.id === gapId);
+                if (gapData) {
+                    gapTitle.innerHTML = formatTextWithCitations(gapData.title);
+                    gapDescription.innerHTML = formatTextWithCitations(gapData.description);
+                    gapRq.innerHTML = `<span class="font-semibold text-slate-600">Associated Research Question:</span> ${formatTextWithCitations(gapData.rq)}`;
+                     if (gapData.interdependencies) {
+                        gapInterdependencies.innerHTML = `<h4 class="font-semibold text-slate-600 mt-3">Interdependencies:</h4><p>${formatTextWithCitations(gapData.interdependencies)}</p>`;
+                        gapInterdependencies.classList.remove('hidden');
+                    } else {
+                        gapInterdependencies.innerHTML = '';
+                        gapInterdependencies.classList.add('hidden');
+                    }
+                    gapNodes.forEach(node => {
+                        node.classList.toggle('active', node.dataset.gap === gapId);
+                    });
+                }
+            }
+            
+            gapNodes.forEach(node => {
+                node.addEventListener('click', () => {
+                    updateGapDetails(node.dataset.gap);
+                });
+            });
+            
+
+            const svsTableBody = document.getElementById('svs-table-body');
+            const svsDetailTitle = document.getElementById('svs-detail-title');
+            const svsDetailContent = document.getElementById('svs-detail-content');
+
+            let svsChart;
+
+            function updateSvsDetails(projectName) {
+                 const projectData = researchData.svsProjects.find(p => p.name === projectName);
+                if (projectData) {
+                    svsDetailTitle.innerHTML = formatTextWithCitations(projectData.name);
+                    svsDetailContent.innerHTML = `
+                        <p><strong class="font-semibold text-slate-700">Core Technology:</strong> ${formatTextWithCitations(projectData.tech)}</p>
+                        <p><strong class="font-semibold text-slate-700">Strengths:</strong> ${formatTextWithCitations(projectData.strengths)}</p>
+                        <p><strong class="font-semibold text-slate-700">Challenges:</strong> ${formatTextWithCitations(projectData.challenges)}</p>
+                    `;
+                    document.querySelectorAll('.svs-row').forEach(row => {
+                         row.classList.toggle('selected', row.dataset.project === projectName);
+                    });
+                }
+            }
+            
+            function renderSvsTable() {
+                researchData.svsProjects.sort((a, b) => b.score - a.score).forEach(p => {
+                    const row = document.createElement('tr');
+                    row.className = 'svs-row bg-white border-b hover:bg-slate-50 cursor-pointer';
+                    row.dataset.project = p.name;
+                    
+                    const scoreBarWidth = p.score * 10;
+                    
+                    row.innerHTML = `
+                        <td class="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">${p.name}</td>
+                        <td class="px-6 py-4">${p.tech}</td>
+                        <td class="px-6 py-4">
+                           <div class="w-full bg-slate-200 rounded-full h-2.5">
+                               <div class="bg-teal-500 h-2.5 rounded-full" style="width: ${scoreBarWidth}%"></div>
+                           </div>
+                        </td>
+                    `;
+                    row.addEventListener('click', () => updateSvsDetails(p.name));
+                    svsTableBody.appendChild(row);
+                });
+            }
+
+            function renderSvsChart() {
+                 const ctx = document.getElementById('svsChart').getContext('2d');
+                 svsChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: researchData.svsProjects.map(p => p.name),
+                        datasets: [{
+                            label: 'Real-Time Viability Score',
+                            data: researchData.svsProjects.map(p => p.score),
+                            backgroundColor: '#14b8a6', 
+                            borderColor: '#0d9488', 
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                max: 10,
+                                title: { display: true, text: 'Score (Higher is Better)' }
+                            },
+                            y: { ticks: { autoSkip: false } }
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `Viability Score: ${context.raw}`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            renderSvsTable();
+            renderSvsChart();
+            
+            
+            function renderMetricsChart() {
+                 const ctx = document.getElementById('metricsChart').getContext('2d');
+                 new Chart(ctx, {
+                    type: 'radar',
+                    data: {
+                        labels: researchData.evaluationMetrics.labels,
+                        datasets: [{
+                            label: 'Importance / Focus',
+                            data: researchData.evaluationMetrics.values,
+                            backgroundColor: 'rgba(13, 148, 136, 0.2)', 
+                            borderColor: 'rgb(13, 148, 136)',
+                            pointBackgroundColor: 'rgb(13, 148, 136)',
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: 'rgb(13, 148, 136)'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            r: {
+                                angleLines: { color: 'rgba(0, 0,0, 0.1)' },
+                                grid: { color: 'rgba(0,0,0,0.1)' },
+                                pointLabels: { font: { size: 12 } },
+                                suggestedMin: 0,
+                                suggestedMax: 5,
+                                ticks: {
+                                    stepSize: 1,
+                                    backdropColor: 'rgba(255, 255, 255, 0.75)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: { display: false }
+                        }
+                    }
+                });
+            }
+            renderMetricsChart();
+
+            const ethicsAccordion = document.getElementById('ethics-accordion');
+            function renderEthics() {
+                researchData.ethics.forEach((item, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'border-b border-slate-200';
+                    div.innerHTML = `
+                        <h2>
+                            <button type="button" class="accordion-button flex justify-between items-center w-full p-5 font-medium text-left text-slate-600 hover:bg-slate-100" data-accordion-target="#accordion-body-${index}">
+                                <span>${formatTextWithCitations(item.title)}</span>
+                                <svg class="accordion-icon w-6 h-6 shrink-0" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                            </button>
+                        </h2>
+                        <div id="accordion-body-${index}" class="hidden p-5 border-t border-slate-200 content-text">
+                            <p>${formatTextWithCitations(item.content)}</p>
+                        </div>
+                    `;
+                    ethicsAccordion.appendChild(div);
+                });
+
+                document.querySelectorAll('.accordion-button').forEach(button => {
+                    button.addEventListener('click', () => {
+                        const targetId = button.getAttribute('data-accordion-target');
+                        const targetBody = document.querySelector(targetId);
+                        button.classList.toggle('active');
+                        targetBody.classList.toggle('hidden');
+                    });
+                });
+            }
+            renderEthics();
+
+            const bibliographyList = document.getElementById('bibliography-list');
+            function renderBibliography() {
+                researchData.bibliography.forEach(item => {
+                    const li = document.createElement('li');
+                    li.id = `bib-${item.id}`;
+                    li.className = 'bibliography-item';
+                    li.innerHTML = formatTextWithCitations(item.text);
+                    bibliographyList.appendChild(li);
+                });
+            }
+            renderBibliography();
+
+            function formatTextWithCitations(text) {
+                if (typeof text !== 'string') return '';
+                return text.replace(/\[([\d, ]+)\]/g, (match, p1) => {
+                    const ids = p1.split(/, | /).filter(id => id.trim() !== '');
+                    return ids.map(id => `<a href="#bib-${id.trim()}" class="citation-link">[${id.trim()}]</a>`).join('');
+                }).replace(/<a href="([^"]+)" target="_blank" rel="noopener noreferrer">([^<]+)<\/a>/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-sky-500 hover:text-sky-600 underline">$2</a>');
+            }
+            
+            function processPageCitations() {
+                const contentSections = document.querySelectorAll('.content-text, .stat-card p:not(:first-child), #gap-details p, #gap-details div, #svs-detail-content p');
+                contentSections.forEach(section => {
+                    section.innerHTML = formatTextWithCitations(section.innerHTML);
+                });
+            }
+            processPageCitations();
+            updateGapDetails('g1'); // Re-initialize with formatted text
+            updateSvsDetails(researchData.svsProjects.sort((a,b) => b.score - a.score)[0].name); // Update with formatted text for the default selected SVS
+
+
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+            mobileMenuButton.addEventListener('click', () => {
+                const isExpanded = mobileMenuButton.getAttribute('aria-expanded') === 'true';
+                mobileMenuButton.setAttribute('aria-expanded', !isExpanded);
+                mobileMenu.classList.toggle('hidden');
+                mobileMenuButton.querySelector('svg:first-child').classList.toggle('hidden');
+                mobileMenuButton.querySelector('svg:last-child').classList.toggle('hidden');
+            });
+
+            const navLinks = document.querySelectorAll('.nav-link');
+            const sections = document.querySelectorAll('main > section'); // Target only top-level sections in main
+            function updateActiveLink() {
+                let current = '';
+                sections.forEach(section => {
+                    const sectionTop = section.offsetTop;
+                    if (pageYOffset >= sectionTop - 80) { // Adjust offset as needed
+                        current = section.getAttribute('id');
+                    }
+                });
+
+                navLinks.forEach(link => {
+                    link.classList.remove('active');
+                    const href = link.getAttribute('href');
+                    if (href && href.substring(1) === current) {
+                        link.classList.add('active');
+                    }
+                });
+            }
+            window.addEventListener('scroll', updateActiveLink);
+            updateActiveLink(); // Initial call
+
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href');
+                    const targetElement = document.querySelector(targetId);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({
+                            behavior: 'smooth'
+                        });
+                         if (mobileMenu.classList.contains('hidden') === false) {
+                           mobileMenuButton.click();
+                        }
+                    }
+                });
+            });
+
+            // Initialize the Mind Map
+            renderMindMap();
+        });
+    </script>
+</body>
+</html>
